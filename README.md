@@ -9,11 +9,13 @@ your machines.**
 > security reports. Build it from source, read the code before you trust it with real
 > keys, and fork it freely.
 
-If you use [SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age)
-to keep secrets encrypted in git, SopsHQ is the single place that remembers
-**which key belongs to which project, which user can decrypt it, and which machine
-it lives on**. It then generates and places those keys for you, on every machine,
-over your private (Tailscale) network.
+SopsHQ is for people who use [SOPS](https://github.com/getsops/sops) and
+[age](https://github.com/FiloSottile/age) to keep secrets encrypted in git. It:
+
+- remembers **which key belongs to which project, which user can decrypt it, and which
+  machine it lives on**;
+- generates those keys and places them for you, on every machine;
+- keeps your machines in sync over your private (Tailscale) network.
 
 > [!IMPORTANT]
 > SopsHQ is a **management plane**, not a decryption gateway. Once a key is placed
@@ -78,8 +80,7 @@ flowchart LR
 
 ## What works
 
-Everything below works end to end on the author's machines (Linux and Windows). The
-Windows build and tests were last run in July 2026.
+Everything below worked end to end on the author's Linux and Windows machines.
 
 - **Core:** encrypted vault, sealed JSON store and replication log, sealed append-only
   audit log, CLI with a status dashboard and an interactive menu.
@@ -146,7 +147,7 @@ sudo sopshq status                     # locked or unlocked, and the panel URL
 
 The defaults are the binary in `/opt/sopshq`, data in `/srv/sopshq` and keys in
 `/srv/sopshq-keys`. Put the data and key folders on an encrypted volume and pass their
-paths with `--data` and `--keybase`; see the [deployment guide](docs/deployment.md).
+paths with `--data` and `--keybase`; see the [Linux deployment guide](docs/deployment.md).
 
 **Windows dev box.** SopsHQ runs as your own user, with no admin rights:
 
@@ -155,21 +156,30 @@ sopshq install -dir C:\SopsHQ
 ```
 
 This sets up the vault and registers a Startup-folder launcher, so SopsHQ starts at
-every logon and asks for the vault key in a console window.
+every logon and asks for the vault key in a console window. See the
+[Windows deployment guide](docs/deployment-windows.md).
 
-**Anywhere.** Run `sopshq` with no arguments for a status dashboard: it finds the
-install, shows whether it is stopped, locked or unlocked, lists every path it uses, and
-prints the exact commands to run it. `sopshq menu` offers every command as a numbered
-menu, and `sopshq help` lists them.
+**Anywhere:**
 
-The vault never unlocks by itself. A foreground `sopshq serve` prompts for the vault key;
-a background `sopshq start` or the systemd service starts locked and waits for
-`sopshq unlock`. For an unattended start, set `SOPSHQ_VAULT_KEY`; it stays in the
-process and is never written to disk.
+- `sopshq` with no arguments shows a status dashboard: where the install is, whether it
+  is stopped, locked or unlocked, every path it uses, and the exact commands to run it.
+  When no install is found at all, it opens the interactive menu.
+- `sopshq menu` offers the commands as a numbered menu, and `sopshq help` lists them.
 
-The panel is plain **HTTP** on `http://127.0.0.1:8770/` by default. Reach it on
-loopback or over Tailscale, which encrypts the connection. **Never expose the panel or
-the agent port on a public interface.** Ports live in `config.jsonc` in the data folder.
+**The vault never unlocks by itself:**
+
+- a foreground `sopshq serve` asks for the vault key;
+- a background `sopshq start`, or the systemd service, starts locked and waits for
+  `sopshq unlock`;
+- for an unattended start, set `SOPSHQ_VAULT_KEY`; it stays in the process and is never
+  written to disk.
+
+The panel is plain **HTTP** on `http://127.0.0.1:8770/` by default. Reach it on loopback
+or over Tailscale, which encrypts the connection. Ports live in `config.jsonc` in the
+data folder.
+
+> [!WARNING]
+> Never expose the panel or the agent port on a public interface.
 
 ## Using the panel
 
@@ -178,8 +188,9 @@ the agent port on a public interface.** Ports live in `config.jsonc` in the data
 3. **Projects:** add a project and set its folder on this machine.
 4. **Keys:** define a key and click **Generate**.
 5. In the project, **assign** the key to a machine and OS user.
-6. **Dashboard, Apply** (try **Dry run** first): SopsHQ places the private keys and
-   writes each project's `.sops.yaml`. `sops -e` and `sops -d` now work in that folder.
+6. **Dashboard:** click **Dry run (local)** to preview, then **Apply to this machine**.
+   SopsHQ places the private keys and writes each project's `.sops.yaml`. `sops -e` and
+   `sops -d` now work in that folder.
 
 **Quick add** in the top bar does all of this in one form for a single secret. **Global**
 holds shared sets: secrets defined once and shared with chosen users, each reading
@@ -206,12 +217,17 @@ signed releases can turn it on; see [docs/releasing.md](docs/releasing.md).
 ## Uninstalling
 
 **Linux:** run `sudo ./uninstall.sh --dry-run` from this repository to see the plan,
-then `sudo ./uninstall.sh`. It asks before every decision: for the program, data and
-key folders it offers move aside, delete, or keep, and it lists every key file first.
-Nothing changes until you type `proceed`.
+then `sudo ./uninstall.sh`.
+
+- It asks before every decision, with no default answer.
+- For the program, data and key folders it offers: move aside, delete, or keep. It lists
+  the key files in the key folder before asking about that folder.
+- Nothing changes until you type `proceed`.
+
+The [deployment guide](docs/deployment.md#uninstall) has the details.
 
 **Windows:** `sopshq uninstall-launcher` removes the Startup launcher. Then delete the
-install folder by hand; see the [deployment guide](docs/deployment.md).
+install folder by hand; see the [Windows guide](docs/deployment-windows.md#uninstall).
 
 > [!WARNING]
 > The data folder and the key folder may hold the only copy of your private keys.
@@ -234,8 +250,9 @@ The full model, including what SopsHQ does not protect against, is in
 
 ## Documentation
 
-- [Deployment guide](docs/deployment.md): installing, running and removing SopsHQ on
-  Linux and Windows.
+- [Linux deployment guide](docs/deployment.md): installing, running and removing
+  SopsHQ on a Linux server.
+- [Windows deployment guide](docs/deployment-windows.md): the same on a Windows dev box.
 - [Architecture](docs/architecture/README.md): the design, key placement, replication,
   storage, backup and recovery.
 - [Terminology](docs/terminology.md): the words SopsHQ uses.
@@ -249,9 +266,8 @@ None of this is built. It is listed so a fork knows where the edges are.
 **Never tested for real**
 
 - The release workflow and `sopshq update`'s automatic restore after a failed update.
-- The Windows build and tests after July 2026.
-- `uninstall.sh` has removed one real Linux install; its bash-profile edit runs only
-  as root and is covered otherwise by a stubbed test harness (`scripts/test_uninstall.sh`).
+- `uninstall.sh` beyond its stubbed test harness (`scripts/test_uninstall.sh`); its
+  `~/.bashrc` edit runs only as root.
 
 **Ideas**
 

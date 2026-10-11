@@ -7,8 +7,8 @@
 // SECURITY: request bodies can carry age PRIVATE keys (placement, and the current
 // key for updatekeys). Confidentiality comes from the network boundary (Tailscale),
 // authentication from the shared transfer key, and the bodies are never logged. The
-// agent typically runs with privilege (root on Linux) so it can place keys for any
-// OS user.
+// agent runs inside `sopshq serve` as the unprivileged service account (serve
+// refuses root), so it places keys only where that account may write.
 package agent
 
 import "sopshq/internal/keys"

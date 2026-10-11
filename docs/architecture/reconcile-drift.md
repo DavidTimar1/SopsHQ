@@ -1,149 +1,175 @@
 # Drift, reconcile, and folder moves
 
-This document explains, in plain language, three closely related things SopsHQ does
-to keep the files it manages honest when the world changes underneath it:
+This document explains three related things SopsHQ does to keep the files it manages
+honest when the world changes underneath it:
 
-1. **Drift** - noticing when the files on disk no longer match what SopsHQ intends.
-2. **Reconcile / resolve** - fixing that gap safely, with one click, from where it is
-   shown.
-3. **Folder moves** - relocating a project's managed files when its folder path
-   changes, instead of leaving old files behind.
+- **Drift:** noticing when the files on disk no longer match what SopsHQ intends.
+- **Resolve:** fixing that gap safely, with one click, from where it is shown.
+- **Folder moves:** moving a project's managed files when its folder changes, instead of
+  leaving old files behind.
 
-It uses the plain-language terms from [`../terminology.md`](../terminology.md): where
-the SOPS tool says "recipient" for a public key listed in an encrypted file, this
-document says **public key**.
+It uses the plain-language terms from [`../terminology.md`](../terminology.md). The
+mechanics of the write-time guard and of finding keys on disk are in
+[the write-time change guard](keys-write-guard.md) and
+[continuous local reconcile](keys-reconcile.md); this document covers what the operator
+sees and the safe choice behind each button. For the overview, start at the
+[architecture index](README.md).
 
-The mechanics of the write-time guard and the on-disk key discovery scan live in
-[`keys.md`](keys.md); this document focuses on what the operator sees and the safe
-choices behind each button.
+## Contents
 
----
+- [What drift means](#what-drift-means)
+  - [Drift messages name the exact difference](#drift-messages-name-the-exact-difference)
+  - [Same account, different identity](#same-account-different-identity)
+  - [Reuse assigns the keys the config already uses](#reuse-assigns-the-keys-the-config-already-uses)
+  - [Pruning orphaned assignments](#pruning-orphaned-assignments)
+- [Resolving drift with one click](#resolving-drift-with-one-click)
+  - [Match to the on-disk keys](#match-to-the-on-disk-keys)
+  - [Adopt readers](#adopt-readers)
+  - [Re-key to desired, and Apply](#re-key-to-desired-and-apply)
+  - [How a re-key decrypts](#how-a-re-key-decrypts)
+- [Moving a project's folder](#moving-a-projects-folder)
+- [How this relates to the write-time guard](#how-this-relates-to-the-write-time-guard)
 
-## 1. What "drift" means
+## What drift means
 
-Every project has an intended set of **public keys** - the keys SopsHQ has decided
-should be able to read that project's secrets. SopsHQ writes that set into the
-project's `.sops.yaml` file (the small config that tells SOPS who can decrypt).
+Every project has an intended set of **public keys**: the keys SopsHQ has decided should
+be able to read that project's secrets. SopsHQ writes that set into the project's
+`.sops.yaml`, the small config that tells sops who can decrypt.
 
 **Drift** is any gap between that intention and the real files on THIS machine:
 
-- a private key that was assigned but never placed in its OS user's key store;
-- a `.sops.yaml` whose public keys no longer match the intended set (someone
-  hand-edited it, or a key was rotated on the other machine);
+- a private key that was assigned but never placed in its OS account's key store;
+- a `.sops.yaml` whose public keys no longer match the intended set (someone edited it by
+  hand, or a key was rotated on another machine);
 - a `.sops.yaml` that has not been written yet.
 
-Drift detection (`keysvc.DriftLocal`) is strictly **read-only**: it stats files and
-reads the database. It never shows a private key or a secret value - only public keys
-and file paths.
+Drift detection only reads: it checks files and reads the database. It never shows a
+private key or a secret value, only public keys and file paths.
 
-### Self-healing prune of orphaned assignments
+### Drift messages name the exact difference
 
-Alongside drift detection, the background reconcile pass (`refreshPending`, which runs at
-startup, after each mutation, and on a one-minute tick) keeps the assignment set
-referentially consistent. It tombstones any assignment whose project or OS user no longer
-exists - a "dangling" record an earlier delete could leave behind - via
-`keysvc.PruneOrphanedAssignments`. The prune is read-mostly and idempotent: it writes only
-when an orphan is present, and a tombstoned assignment leaves the live set so it is never
-re-processed. A project-less key placement (an adopted key, `ProjectID == ""`) whose OS
-user is still live is kept. Each pruned tombstone replicates to the other machine like any
-delete. This is what lets a key that only a since-deleted project used become deletable on
-the next run without a manual step (see [`keys.md`](keys.md), "Referential integrity of
-assignments").
+A drift message says WHAT is wrong, by key NAME where SopsHQ knows one (otherwise a short
+`age1...` prefix):
 
-### Messages name the exact difference
+- *"the secrets config lists public key 'adopted-alice-2' (age1csf...) that this project
+  does not include"*: an extra key is on disk.
+- *"the project is missing public key 'billing' (age1r8x...)"*: an intended key is absent
+  from disk.
+- *"no .sops.yaml at C:\proj\.sops.yaml yet"*: the file has not been written.
 
-A drift message spells out WHAT is wrong, by key NAME where SopsHQ knows one (falling
-back to a short `age1...` prefix), so the operator does not have to guess:
+### Same account, different identity
 
-- *"the secrets config lists public key 'adopted-alice-2' (age1csf...) that this
-  project does not include"* - an extra key is on disk.
-- *"the project is missing public key 'billing' (age1r8x...)"* - an intended key is
-  absent from disk.
-- *"no .sops.yaml at C:\proj\.sops.yaml yet"* - the file has not been written.
+One account's key store (its `keys.txt`) can hold SEVERAL age identities, for example
+`adopted-alice` and `adopted-alice-2`, both belonging to the account **alice**. Age tries
+each identity, so alice can decrypt a secret encrypted to EITHER one.
 
-### Same account, different identity - not a lost reader
+So when the public key on disk and the one a project expects are two identities of the SAME
+account, that is an identity switch, not a lost reader, and the message says so:
 
-One person's key store (their `keys.txt`) can hold SEVERAL age identities - for example
-`adopted-alice` and `adopted-alice-2`, both belonging to the account **alice**. Because
-age tries each identity, alice can decrypt a secret encrypted to EITHER one. So when the
-public key on disk and the one a project expects are two identities of the SAME account,
-that is an identity switch, not a loss of access - and the message says so:
+- *"the secrets config uses public key 'adopted-alice-2' (age1csf...); this project is set
+  to public key 'adopted-alice' (age1ajj...) - the same account 'alice', which can decrypt
+  either"*.
 
-- *"the secrets config uses public key 'adopted-alice-2' (age1csf...); this project is
-  set to public key 'adopted-alice' (age1ajj...) - the same account 'alice', which can
-  decrypt either"*.
+How SopsHQ decides:
 
-SopsHQ decides which account a public key belongs to from the **assignments** that link a
-key to an OS user (an adopted key is assigned to the account it was adopted for; a project
-key is assigned to the accounts granted it). The alarming *"missing X / lists extra Y"*
-wording is kept ONLY when the two keys belong to genuinely DIFFERENT accounts, so a real
-loss of a reader still stands out. A public key that maps to more than one account is
-treated conservatively as ambiguous (the precise wording is kept rather than guessing
-"same account").
+- It finds which account a public key belongs to from the **assignments** that link a key
+  to an OS account (an adopted key is assigned to the account it was adopted for; a project
+  key to the accounts granted it).
+- The alarming *"missing X / lists extra Y"* wording is kept only when the two keys belong
+  to genuinely DIFFERENT accounts, so a real lost reader still stands out.
+- A public key that maps to more than one account is treated as ambiguous, and the precise
+  wording is kept rather than guessing "same account".
 
 ### Reuse assigns the keys the config already uses
 
 Onboarding a project whose folder ALREADY has a `.sops.yaml` (or encrypted secrets) does
-NOT pick an arbitrary key from the store: it reads the public keys that config already
-uses and assigns the project EXACTLY those (see [`keys.md`](keys.md), "Reuse matches the
-on-disk config"). That is why a plain reuse of a multi-identity account no longer creates
-the identity-switch drift above in the first place - the desired set is made equal to what
-is on disk from the start.
+not pick an arbitrary key from the store. It reads the public keys that config already uses
+and assigns the project EXACTLY those (see [safe wiring](keys-safe-wiring.md)). So a plain
+reuse of a multi-identity account does not create the identity-switch drift above: the
+intended set equals what is on disk from the start.
 
----
+### Pruning orphaned assignments
 
-## 2. Resolving drift with one click
+Alongside drift detection, the background reconcile pass keeps the assignments consistent.
 
-Every `.sops.yaml` drift row on the **Drift** page carries its own resolve action, so
-the operator is never stuck with a change they cannot clear. The actions POST to
-`/drift/resolve` (CSRF-protected, same login level as Apply) and are audited by
-project name.
+- **What it removes.** An assignment whose project or OS account has been deleted (a
+  tombstone with no merge pointer).
+- **What it keeps.**
+  - an assignment whose parent is not synced yet (an unknown id);
+  - an assignment whose parent was merged into another record (it is re-pointed instead;
+    see [conflict resolution](conflict-resolution.md#references-survive-a-merge-on-the-other-machine));
+  - a key placement with no project (an adopted key) while its OS account is live.
+- **When it runs.** When `serve` starts, after each change, and once a minute (see
+  [peer identity](peer-identity.md#idempotent-and-self-healing)). It writes only when an
+  orphan exists, and each removal replicates like any delete.
+- **Why it matters.** A key that only a since-deleted project used becomes deletable on the
+  next run, with no manual step.
+
+## Resolving drift with one click
+
+Every `.sops.yaml` drift row on the **Drift** page carries its own resolve action, so the
+operator is never stuck with a change they cannot clear. The actions post to
+`/drift/resolve` (CSRF-protected) and are audited by project name.
 
 | Situation | Button | What it does | Who can still decrypt after |
 | --- | --- | --- | --- |
-| Public keys differ | **Match to the on-disk keys** (recommended) | Points the project at the public keys the config already uses: assigns the on-disk key(s) and removes the project's desired-only alternate. When the config already matches, it re-keys NOTHING (a pure no-op re-key); otherwise it writes the matched set and re-keys to it. | Everyone the config already lists - no reader is dropped. |
-| Extra public key(s) on disk | **Adopt readers** | Takes the extra public key(s) into the project IN ADDITION to its own, then rewrites the config to the union and re-keys the secrets. | Everyone who could before, plus the project's own keys - nobody is dropped. |
-| Extra public key(s) on disk | **Re-key to desired** | Rewrites the config to ONLY the project's assigned public keys and re-keys the secrets, dropping the extras. | Only the project's assigned keys - the dropped key(s) can no longer decrypt (the warning names them). |
+| Public keys differ | **Match to the on-disk keys** (recommended) | Points the project at the public keys the config already uses. Re-keys nothing when the config already matches. | Everyone the config already lists; no reader is dropped. |
+| Extra public key on disk | **Adopt readers** | Adds the extra keys to the project, rewrites the config to the union, and re-keys the secrets. | Everyone who could before, plus the project's own keys. |
+| Extra public key on disk | **Re-key to desired** | Rewrites the config to ONLY the project's assigned keys and re-keys, dropping the extras. | Only the assigned keys; the dropped keys can no longer decrypt, and the warning names them. |
 | `.sops.yaml` not written yet | **Apply** | Writes the config for the project's assigned public keys. | The project's assigned keys. |
 
-**Match to the on-disk keys never drops a reader.** The keys it removes from the project
-are desired-only keys that were never on disk, so no secret is encrypted to them (and for
-an identity switch, the removed key is the same account's other identity, which still
-decrypts via the on-disk one). It is the right primary fix for a same-account identity
-mismatch, and it avoids a plain **Apply** that would rewrite a matching config and could
-drop an on-disk reader. Because it can adopt an on-disk key not yet in custody, that
-custody-sensitive case is admin-only; matching keys already held needs only the Apply
-login level. A project's own page shows this same call to action when its config's public
-keys differ, instead of a bare Apply.
+These are explicit operator choices, so they ACT on the file that drifted rather than
+stopping at the write-time guard the way a background write would. They re-stamp the result
+afterwards, so the next drift check clears the row and later outside edits are still
+caught.
 
-**Adopt readers never drops a reader.** It scans for every public key already
-protecting the project (both `.sops.yaml` and the encrypted secrets metadata, in any
-YAML layout), and for each one not yet part of the project it either reuses the key
-SopsHQ already holds or adopts it from a local key store, then adds a project
-assignment. If a public key on disk cannot be matched to a private key SopsHQ can see,
-Adopt readers refuses (changing nothing) rather than leaving a half-adopted key that
-nobody can decrypt for - the operator imports that key first, or chooses Re-key to
-desired. It also **fails closed**: if the on-disk state signals public keys but SopsHQ
-cannot read any of them (an unfamiliar format), it refuses and re-keys nothing, so it
-can never re-encrypt the secrets WITHOUT a reader.
+### Match to the on-disk keys
 
-**How a re-key decrypts.** Every re-key first has to DECRYPT the secrets as they are
-CURRENTLY encrypted (to whichever subset of the assigned keys is on disk right now),
-then re-encrypt to the new public-key set. To decrypt, SopsHQ hands `sops` EVERY
-assigned key it can unseal from the vault - not one guessed key - so `sops` can always
-find the one that fits the file, no matter which keys it was last encrypted to. Those
-private keys are supplied only through a scrubbed `SOPS_AGE_KEY` child environment (see
-the system overview) and are never written to disk or logged; the new set the secrets
-end up encrypted to is decided purely by the rewritten `.sops.yaml`.
+- **What it does.** Assigns the key or keys on disk, removes the project's desired-only
+  alternative, and writes and re-keys only if the config does not already match.
+- **Guarantee: no reader is dropped.** The keys it removes from the project were never on
+  disk, so no secret is encrypted to them. For an identity switch, the removed key is the
+  same account's other identity, which still decrypts through the one on disk.
+- **When to use it.** It is the right fix for a same-account identity mismatch, and it
+  avoids a plain **Apply**, which would rewrite a matching config and could drop a reader
+  that is on disk.
+- **Access.** It can adopt an on-disk key not yet held by SopsHQ; that case is admin-only.
+  Matching keys already held needs only the normal login level.
+- A project's own page offers the same action when its config's public keys differ.
 
-**Adopt readers is admin-only.** Because it can import an unknown on-disk private key
-into the vault (the same custody-sensitive step as the external-change reconcile), it
-requires an admin session. Re-key to desired and Apply stay at the Apply login level.
+### Adopt readers
 
-Because these are explicit operator choices, they ACT on the very file that drifted
-(they do not stop at the write-time guard the way a background write would), but they
-re-stamp the result afterward, so the next drift check clears the row and future
-outside edits are still caught.
+- **What it does.** It finds every public key already protecting the project (in
+  `.sops.yaml` and in the encrypted secrets' metadata, in any YAML layout). For each one
+  not yet in the project, it reuses the key SopsHQ already holds or adopts it from a local
+  key store, then adds a project assignment.
+- **Guarantee: no reader is dropped.**
+- **Refuses when** a public key on disk cannot be matched to a private key SopsHQ can see.
+  It changes nothing rather than leave a half-adopted key; the operator imports that key
+  first, or chooses Re-key to desired.
+- **Fails closed** when the files show signs of public keys but SopsHQ cannot read any of
+  them (an unfamiliar format): it refuses and re-keys nothing, so it can never re-encrypt
+  the secrets without a reader.
+- **Access.** Admin-only, because it can import an unknown on-disk private key into the
+  vault, the same custody-sensitive step as the external-change reconcile.
+
+### Re-key to desired, and Apply
+
+- **Re-key to desired** drops the extra readers on purpose; the warning names them.
+- **Apply** writes a config that does not exist yet.
+- Both stay at the normal login level.
+
+### How a re-key decrypts
+
+Every re-key first DECRYPTS the secrets as they are encrypted right now, then encrypts them
+to the new public-key set.
+
+- To decrypt, SopsHQ gives `sops` EVERY assigned key it can unseal from the vault, not one
+  guessed key, so `sops` finds whichever key fits the file.
+- Those private keys reach `sops` only through a scrubbed `SOPS_AGE_KEY` child environment
+  (see [secret values](secrets.md#encrypt-and-forget)); they are never written to disk or
+  logged.
+- The set the secrets end up encrypted to is decided only by the rewritten `.sops.yaml`.
 
 ```mermaid
 flowchart TD
@@ -153,58 +179,59 @@ flowchart TD
   C -->|"Match to the on-disk keys (recommended)"| MD["Assign the on-disk key(s);\nremove the desired-only alternate\n(no reader dropped; no re-key when it matches)"]
   C -->|"Adopt readers"| AR["Take extra key(s) into the project too;\nrewrite to the union; re-key secrets\n(nobody loses access)"]
   C -->|"Re-key to desired"| RK["Rewrite to assigned keys only;\nre-key secrets\n(drops the extra key(s), with warning)"]
-  AP --> S["Re-stamp; DriftLocal clears the row"]
+  AP --> S["Re-stamp; drift check clears the row"]
   MD --> S
   AR --> S
   RK --> S
 ```
 
----
-
-## 3. Moving a project's folder
+## Moving a project's folder
 
 A project stores one folder per machine (the same project lives at different paths on
-Windows and Linux). SopsHQ writes that project's `.sops.yaml` into that folder.
-
-When the operator CHANGES an already-set folder to a different one, SopsHQ treats it as
-a **move**, not just a re-point: the files SopsHQ manages follow to the new folder, so
-the old folder is not left with a stranded `.sops.yaml`.
+Windows and Linux), and SopsHQ writes that project's `.sops.yaml` into it. When the
+operator CHANGES a folder that is already set, SopsHQ treats it as a **move**: the files it
+manages follow to the new folder, so the old folder is not left with a stray `.sops.yaml`.
 
 ### What moves, what does not
 
-Only files SopsHQ itself manages are moved:
+Only files SopsHQ itself manages move:
 
-- the **generated `.sops.yaml`** - identified by its header line
-  (`# Generated by SopsHQ`). A **hand-authored** `.sops.yaml` (no such header) is NEVER
-  moved or deleted; SopsHQ leaves it exactly where it is.
-- a **SopsHQ-tracked `secrets.yaml`** - one that has a content stamp (SopsHQ has
-  written or tracked it). An untracked secrets file is left alone.
+- **the generated `.sops.yaml`**, recognised by its header line (`# Generated by SopsHQ`).
+  A hand-written `.sops.yaml` (no such header) is never moved or deleted.
+- **a tracked `secrets.yaml`**: one with a content stamp, because SopsHQ wrote or tracked
+  it. An untracked secrets file is left alone.
 
-The move copies the file BYTE-FOR-BYTE (it is moved, not regenerated), removes it from
-the old folder, moves its content stamp to the new path, and points the project record
-at the new folder. The age private key is unaffected - it lives in the OS user's key
-store, not in the project folder.
+The move:
+
+- copies the file byte for byte (it is moved, not regenerated);
+- removes it from the old folder;
+- moves its content stamp to the new path;
+- points the project record at the new folder.
+
+The age private key is unaffected: it lives in the OS account's key store, not in the
+project folder.
 
 ### Confirm first, and safe stops
 
-Nothing moves silently. Saving a changed local folder first shows a **confirm screen**
-that lists old -> new and exactly what will be written and removed. All checks run
-BEFORE any file is touched, so the move stops cleanly - with no partial or destructive
-state - when:
+Nothing moves silently. Saving a changed local folder first shows a **confirm screen** that
+lists old and new, and exactly what will be written and removed.
 
-- the old managed file was changed OUTSIDE SopsHQ (the write-time guard trips): the
-  move stops and surfaces the reconcile screen so the operator resolves it first;
+All checks run BEFORE any file is touched, so the move stops cleanly, with nothing half
+done, when:
+
+- the old managed file was changed OUTSIDE SopsHQ (the write-time guard trips): the move
+  stops and shows the reconcile screen, so the operator resolves it first;
 - the new folder cannot be created or written to;
-- a DIFFERENT managed file already sits at the new path - either a `.sops.yaml` or a
-  `secrets.yaml` whose bytes differ from the one being moved. SopsHQ will not overwrite
-  it (that would destroy unrelated encrypted data); the operator moves or removes that
-  file first.
+- a DIFFERENT managed file already sits at the new path (a `.sops.yaml`, or a
+  `secrets.yaml` whose bytes differ from the one being moved). SopsHQ will not overwrite
+  it, because that would destroy unrelated encrypted data; the operator moves or removes
+  that file first.
 
-### Local only; peers reconcile themselves
+### Local only; peers move their own files
 
 SopsHQ can only touch the LOCAL machine's filesystem. Changing the folder for a PEER
-machine records the new path only; that machine moves its own managed files the next
-time it applies or reconciles. The UI states this when a peer path is changed.
+records the new path only; that machine moves its own managed files the next time it
+applies or reconciles. The page says so when a peer's path is changed.
 
 ```mermaid
 flowchart TD
@@ -217,15 +244,15 @@ flowchart TD
   CH -->|"ok"| MV["Move managed files byte-for-byte;\nremove from old; re-point record"]
 ```
 
----
+## How this relates to the write-time guard
 
-## 4. How this relates to the write-time guard
+The [write-time guard](keys-write-guard.md) stops a background write from overwriting a
+file that changed outside SopsHQ, and offers Adopt, Overwrite or Cancel.
 
-The **write-time guard** (see [`keys.md`](keys.md)) stops a background write from
-silently clobbering a file that changed outside SopsHQ, offering Adopt / Overwrite /
-Cancel. The drift-resolve actions and the folder move are the OPERATOR-INITIATED
-counterparts: the operator has chosen to act on a specific file, so they proceed and
-re-stamp, but they still refuse to run over an unresolved outside change - a folder
-move whose source changed externally hands off to the same reconcile screen. Together
-they enforce one rule everywhere: SopsHQ never silently erases something it did not
-write.
+- The drift actions and the folder move are the operator-started counterparts: the
+  operator chose to act on a specific file, so they proceed and re-stamp.
+- They still refuse to run over an unresolved outside change: a folder move whose source
+  changed hands off to the same reconcile screen.
+
+Together they enforce one rule everywhere: SopsHQ never silently erases something it did
+not write.

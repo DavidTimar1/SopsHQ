@@ -294,7 +294,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /projects/{id}/secrets", s.protect(s.addSecret))
 	m.HandleFunc("POST /projects/{id}/secrets/edit", s.protect(s.editSecret))
 	m.HandleFunc("POST /projects/{id}/secrets/reveal", s.protect(s.revealSecret))
-	m.HandleFunc("POST /projects/{id}/secrets/bulk-add", s.protect(s.bulkAddSecrets))
+	m.HandleFunc("POST /projects/{id}/secrets/bulk-add", s.protectAdmin(s.bulkAddSecrets))
 	m.HandleFunc("POST /projects/{id}/secrets/delete", s.protect(s.deleteSecret))
 
 	// Folder browser for path fields (lists directories on THIS machine only).

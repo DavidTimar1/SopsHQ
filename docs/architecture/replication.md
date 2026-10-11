@@ -3,60 +3,71 @@
 This part explains how the peer machines converge on the same records without copying
 the database file. For the overview, start at the [architecture index](README.md).
 
-## 10. Replication
+## Contents
 
-Each local mutation is HLC-stamped and appended to the oplog. A node periodically
-pulls the peer's oplog events past a stored per-peer watermark over the
-transfer-token-gated sync channel (`GET /v1/oplog?since=N`; plain HTTP whose
-confidentiality comes from the network - Tailscale/WireGuard or an SSH tunnel, see
-[security](security.md)) and applies them with last-writer-wins
-(`store.ApplyEvent` -> `ApplyRemote`). A node's oplog holds only its OWN
-locally-originated mutations (applying a peer event does not re-log it), so pulling
-never echoes back and the two converge without loops. Independent concurrent edits
-are resolved deterministically and the conflict is surfaced in the audit log
-(`replication_conflict`). Tombstones propagate deletes. With a handful of peer nodes
-and rare, human-driven writes, eventual consistency via LWW is sufficient - no
-Raft/consensus.
+- [How replication works](#how-replication-works)
+- [Per-field merge](#per-field-merge)
+- [Surfacing and resolving a field conflict](#surfacing-and-resolving-a-field-conflict)
+- [Records written before per-field merge](#records-written-before-per-field-merge)
+- [Linking a machine into the cluster](#linking-a-machine-into-the-cluster)
 
-## 10a. Per-field merge (so two machines can edit one record at once)
+## How replication works
 
-Plain last-writer-wins copies a record WHOLE: the newer copy overwrites the older
-copy entirely. That silently loses data when two machines edit DIFFERENT fields of
-the same record at the same time - machine 1 edits a key's note while machine 2
-rotates the same key, and one edit vanishes. SopsHQ never loses data silently, so
-that is not acceptable.
+- **Stamp and log.** Each local change is stamped with a hybrid logical clock (HLC) time
+  and appended to this machine's operation log (oplog).
+- **Pull.** Every 30 seconds, and when the operator clicks **Sync now**, a machine pulls
+  each peer's oplog entries past a stored per-peer watermark (`GET /v1/oplog?since=N`).
+  The request carries the transfer key; the channel is plain HTTP whose confidentiality
+  comes from the network (see [security](security.md)).
+- **Apply.** Pulled entries are applied with last-writer-wins by HLC time, or with
+  per-field merge for record types that opt in (below).
+- **No echo.** A machine's oplog holds only its own local changes; applying a peer's
+  entry does not log it again. So pulling never echoes back, and peers converge without
+  loops.
+- **Conflicts and deletes.** Independent concurrent edits are resolved the same way on
+  every machine, and recorded in the audit log (`replication_conflict`). Deletes travel
+  as tombstones.
+- **Why no consensus protocol.** With a handful of peers and rare, human-driven writes,
+  eventual consistency is enough; there is no Raft or other consensus.
 
-A record type may instead opt in to **per-field merge** by implementing
-`model.Merger`. Today only `Key` does. Such a record is split into named **field
-groups** - sets of fields that move together atomically:
+## Per-field merge
+
+Plain last-writer-wins copies a record whole: the newer copy replaces the older one. That
+loses data when two machines edit different fields of the same record at the same time,
+for example one machine edits a key's note while another rotates the same key. SopsHQ
+never loses data silently, so that is not acceptable.
+
+A record type can instead opt in to **per-field merge** by implementing `model.Merger`;
+the `Key` record does (see `internal/model/merge.go`). Such a record is split into named
+**field groups**, sets of fields that always move together:
 
 | Group     | Fields                                  |
 |-----------|-----------------------------------------|
 | `name`    | Name                                    |
 | `type`    | Type                                    |
 | `note`    | Note                                    |
-| `keypair` | Recipient + PrivSealed + Generation (atomic - a rotation never splits) |
+| `keypair` | Recipient, PrivSealed and Generation together, so a rotation never splits |
 | `status`  | Status                                  |
 | `owner`   | OwnerUserID                             |
 
-Each group carries a small **version vector** in `Meta.FieldVV`: a map of
-`node id -> update counter`. When a machine changes a group it bumps only its own
-counter (so the new value causally dominates the value it replaced, but stays
-concurrent with any change the other machine made that it has not yet seen).
+Each group carries a small **version vector** in `Meta.FieldVV`: a map from node id to an
+update counter. A machine that changes a group raises only its own counter, so the new
+value follows the one it replaced, while staying concurrent with any change another
+machine made that it has not seen yet.
 
-`ApplyRemote` then merges a peer's copy group by group:
+Applying a peer's copy then works group by group:
 
-- values equal -> converge the vectors (take the componentwise max), nothing to do;
-- one vector **dominates** the other -> take the dominant side's value (a CAUSAL
-  update - no conflict);
-- neither dominates AND the values differ -> a genuine **same-field divergence**:
-  keep the LOCAL value untouched and record a machine-local `FieldConflict` holding
-  the peer's candidate. Never overwrite.
+- **Values equal:** take the larger counter of each node; nothing else to do.
+- **One vector dominates the other:** take the dominant side's value. This is an ordinary
+  update, not a conflict.
+- **Neither dominates and the values differ:** a real same-field conflict. Keep the local
+  value untouched and record a machine-local `FieldConflict` holding the peer's value.
+  Never overwrite.
 
-Version vectors capture causality exactly, so a causal edit never looks like a
-conflict and a real conflict is never mistaken for causal. This was chosen over an
-HLC+watermark heuristic because it is provably correct, and this path is
-data-safety-critical.
+Version vectors capture cause and effect exactly, so an ordinary edit never looks like a
+conflict and a real conflict is never mistaken for an ordinary edit. They were chosen
+over a clock-and-watermark heuristic because they are provably correct, and this path
+decides whether data survives.
 
 ```mermaid
 flowchart TD
@@ -72,29 +83,43 @@ flowchart TD
   C --> S[surface on /conflicts as a field conflict]
 ```
 
-**Surfacing and resolving a same-field conflict.** Both machines detect the same
-divergence independently (each applies the other's event), so each records its own
-`FieldConflict` row - a MACHINE-LOCAL record that never replicates. Both machines
-show it on `/conflicts` as a "field" conflict: the two candidate values (a secret
-group like `keypair` shows only provenance + the public recipient, never the private
-key). The operator resolves it with the SAME two-step, double-confirmed pick used for
-duplicate-record merges: choose the winning value, confirm on a second screen. The
-choice is written with a version vector that **dominates both candidates**, so it
-replicates and the other machine adopts it and clears its own row - convergence with
-no further prompt. Re-applying any event is a no-op (idempotent).
+## Surfacing and resolving a field conflict
 
-**Backward-readable.** A record written before this feature has no `FieldVV`. When a
-group has no vector on BOTH sides the merge falls back to whole-record
-last-writer-wins by `Meta.Updated` - the previous behavior - so old records load and
-merge with no reset or migration. Deletes/tombstones and machine merges also keep the
-whole-record path; per-field merge applies only to two live records.
+- **Detect.** Both machines find the same divergence on their own, since each applies the
+  other's change, and each records its own `FieldConflict`. That record is machine-local
+  and never replicates.
+- **Show.** Both machines list it on `/conflicts` as a field conflict with the two
+  candidate values. A secret group such as `keypair` shows only where each value came
+  from and the public key, never the private key.
+- **Resolve.** The operator uses the same two-step, double-confirmed pick as for
+  duplicate records: choose the winning value, then confirm on a second screen.
+- **Converge.** The choice is written with a version vector that dominates both
+  candidates, so it replicates, and the other machine adopts it and clears its own record
+  with no further prompt. Re-applying any change is harmless.
 
-**Shared vault key requirement.** Sealed private-key blobs replicate verbatim and
-can be opened on the peer only if both nodes derive the SAME data key. Because the
-vault key is derived from the vault key + a FIXED app-wide salt (not a random
-per-machine one), this needs nothing more than **the same vault key on both
-machines** - there is no salt or KDF parameter to exchange. Linking a machine into the
-cluster is therefore: set the same vault key, set the same **transfer key** (the shared
-secret that authenticates the agent, stored vault-sealed per machine), and add each
-machine on its peers by its Tailscale address (Machines page). Replication then pulls
-each peer's oplog over HTTP, authenticated by the transfer key.
+## Records written before per-field merge
+
+A record written before this feature has no `FieldVV`.
+
+- When a group has no vector on both sides, the merge falls back to whole-record
+  last-writer-wins by `Meta.Updated`, so old records load and merge with no reset or
+  migration.
+- Deletes, tombstones and machine merges also use the whole-record path; per-field merge
+  applies only between two live records.
+
+## Linking a machine into the cluster
+
+Sealed private keys replicate byte for byte, and a peer can open them only if both
+machines derive the same data key. The vault key is derived from the vault key and a
+fixed salt built into SopsHQ, so this needs only **the same vault key on every machine**;
+there is no salt or other parameter to exchange (see [security](security.md)).
+
+To link a machine:
+
+1. Use the same vault key as the other machines.
+2. Set the same **transfer key**, the shared secret that authenticates the agent, on the
+   Machines page (admin). It is stored vault-sealed in `config.jsonc` as
+   `transfer_key_sealed`, and takes effect when `serve` restarts.
+3. Add each machine on its peers by its Tailscale address (Machines page).
+
+Replication then pulls each peer's oplog over HTTP, authenticated by the transfer key.

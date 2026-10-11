@@ -1,10 +1,10 @@
 // Package hlc implements a Hybrid Logical Clock.
 //
-// Why not just a wall-clock timestamp? SopsHQ runs multi-master on two machines
-// (a Windows box and a Linux server) whose clocks can drift apart. If we
-// resolved "who wrote last" purely by wall time, a machine with a fast clock
-// would always win and an out-of-order pair of edits could be misordered. An
-// HLC combines physical time with a logical counter so that:
+// Why not just a wall-clock timestamp? SopsHQ runs multi-master across its peer
+// machines, whose clocks can drift apart. If we resolved "who wrote last" purely
+// by wall time, a machine with a fast clock would always win and an out-of-order
+// pair of edits could be misordered. An HLC combines physical time with a logical
+// counter so that:
 //
 //   - timestamps still track real time closely (good for humans reading logs),
 //   - but causality is preserved even under clock skew, and

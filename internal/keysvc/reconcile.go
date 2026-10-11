@@ -49,7 +49,8 @@ var ErrReinstallTargetInvalid = errors.New("keysvc: choose an existing, confirme
 // same automatic merges and skips the same conflicts, so the cluster still converges.
 //
 // The pass is idempotent: with nothing to do it only scans. It heals pre-existing
-// duplicates (the operator's 4-records-for-2-machines mess) on the next run.
+// duplicates on the next run: records already stored as several rows for one
+// machine converge without operator action.
 
 // ReconcileResult reports what a reconcile pass changed. LocalMachineID is the
 // (possibly-updated) local machine id after following any merge redirect that

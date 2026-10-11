@@ -1,32 +1,40 @@
 # Build and versioning
 
-This part explains how SopsHQ stamps its version into the binary at build time. For
-the overview, start at the [architecture index](README.md).
+This part explains how SopsHQ stamps its version into the binary and how releases are
+built. For the overview, start at the [architecture index](README.md).
 
-## 11. Build and versioning
+## Contents
 
-- Version lives in the root `VERSION` file (semver) and is injected into the binary
-  at build time: `-ldflags "-X main.version=$(cat VERSION)"`. Plain `go run`/`go test`
-  report `dev`.
-- Every behavior change bumps `VERSION` in the same change, and its commit message
-  carries the reason: git is the changelog. Structural changes update these
-  architecture documents.
+- [Version and build](#version-and-build)
+- [Releases and updating](#releases-and-updating)
 
-## 12. Releases and updating
+## Version and build
 
-- A release is four files: the Linux and Windows binaries, `SHA256SUMS` and
-  `SHA256SUMS.sig`. CI builds a draft with the first three; the operator signs on their
-  own machine with `releasesign publish`, which uploads the signature and publishes the
-  draft, so the signing seed never reaches GitHub. `SHA256SUMS` names the release version inside the signed bytes, so
-  an old signed release cannot be replayed as a new one.
-- The signature is ML-DSA-65 (`crypto/mldsa`, Go 1.27). The private seed lives only on
-  the operator's machine (a 0600 file outside the repository); the public key is embedded in the binary from
-  `internal/update/release_pubkey.hex`. A build with no key embedded refuses every
-  update. `cmd/releasesign` creates the key and writes and signs `SHA256SUMS`.
-- `sopshq update` (Linux, root) is a management-plane command like `setup`: it replaces
-  the binary only and never touches the vault, data or config. Its logic is in
-  `internal/update` (verification, versions, backups, release source) and
-  `cmd/sopshq/update_*_linux.go` (the swap sequence and the systemd and `gh` adapters).
-  The operator-facing description is in [Updating](../deployment.md#updating-linux).
-- The unlock status reply carries the running version so an update can prove the new
-  build is the one that came up.
+- The version lives in the root `VERSION` file (semver).
+- It is injected at build time: `-ldflags "-X main.version=$(cat VERSION)"`. A plain
+  `go run` or `go test` reports `dev`.
+- `./build.sh` builds the Linux and Windows (amd64) binaries into `dist/` with the
+  version injected. `./build.sh --check` runs `go vet` and `go test` first.
+- When to bump the version is in [contributing](../../CONTRIBUTING.md).
+
+## Releases and updating
+
+**This snapshot embeds no release signing key, so `sopshq update` refuses every update
+until a fork embeds its own key.** The release process for a fork is in
+[releasing](../releasing.md), and the trust model is in
+[security](security.md#updates-and-release-signing).
+
+- **A release** is four files: the Linux and Windows binaries, `SHA256SUMS` and
+  `SHA256SUMS.sig`. The example workflow `docs/examples/release.yml` builds a draft with
+  the first three; the fork maintainer signs and publishes it with `releasesign
+  publish`, so the signing seed never reaches GitHub.
+- **The signature** is ML-DSA-65 (`crypto/mldsa`, Go 1.27).
+  - The public key is embedded from `internal/update/release_pubkey.hex`. In this
+    snapshot that file holds no key.
+  - The private seed is a 0600 file kept outside the repository.
+  - `cmd/releasesign` creates the key and writes and signs `SHA256SUMS`.
+- **`sopshq update`** (Linux, root) replaces the binary only and never touches the vault,
+  data or config.
+  - Its logic is in `internal/update` and `cmd/sopshq/update_*_linux.go`.
+  - The operator's view is in [updating](../deployment.md#updating-linux).
+- **Proof the new build came up:** the unlock status reply carries the running version.

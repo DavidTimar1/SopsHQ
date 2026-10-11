@@ -40,11 +40,15 @@ git add internal/update/release_pubkey.hex
 git commit -m "release: embed the signing public key"
 ```
 
-`keygen` writes the private seed to that file (mode 0600, never printed, refused inside
-a git work tree, never overwritten) and the public key into
-`internal/update/release_pubkey.hex`. Back the seed file up somewhere safe and offline:
-losing it means no install can be updated again without a hand reinstall. Never commit
-it; `.gitignore` already ignores `*seed*.hex`.
+What `keygen` does:
+
+- writes the private seed to that file with mode 0600, and never prints it;
+- refuses a seed path inside a git work tree, and never overwrites an existing file;
+- writes the public key into `internal/update/release_pubkey.hex`.
+
+Back the seed file up somewhere safe and offline: losing it means no install can be
+updated again without a hand reinstall. Never commit it; `.gitignore` already ignores
+`*seed*.hex`.
 
 `keygen` refuses to replace a key that is already embedded, because a new key
 invalidates every release signed with the old one.
@@ -71,11 +75,19 @@ git tag vX.Y.Z && git push origin vX.Y.Z      # 2. the workflow builds the draft
 SOPSHQ_RELEASE_REPO=OWNER/REPO go run ./cmd/releasesign publish -tag vX.Y.Z -seed ~/sopshq-release-seed.hex
 ```
 
-`publish` uses your own `gh` login. It downloads the draft's `SHA256SUMS` and refuses
-unless the version inside matches the tag, the seed matches an embedded public key, and
-the release is still an unsigned draft. Then it signs, checks its own signature, uploads
-`SHA256SUMS.sig` and publishes the draft. `-repo OWNER/REPO` works instead of the
-environment variable.
+`publish` uses your own `gh` login. It refuses unless:
+
+- the tag looks like `vX.Y.Z`;
+- the seed matches a public key embedded in the code;
+- the release is still a draft, has `SHA256SUMS`, and has no signature yet;
+- the version inside the draft's `SHA256SUMS` matches the tag.
+
+Then it signs, checks its own signature, uploads `SHA256SUMS.sig` and publishes the
+draft. `-repo OWNER/REPO` names the repository when `SOPSHQ_RELEASE_REPO` is not set.
+
+`gh` is looked for only at `/usr/bin/gh`, `/usr/local/bin/gh`, `/bin/gh` and
+`/snap/bin/gh`, never through `PATH`, so `publish` does not work on Windows or with a
+Homebrew `gh`. The list is `GHPaths` in `internal/update/ghpath.go`.
 
 `releasesign sums` and `releasesign sign` do the checksum and signing steps on their own,
 for a pipeline of your own; `sign` reads the hex seed from `SOPSHQ_RELEASE_SIGNING_SEED`.
@@ -91,8 +103,9 @@ The first binary that carries your key has to be installed by hand
 2. `release_repo` in the install's `config.jsonc`;
 3. on a terminal, a prompt; the answer is saved to `config.jsonc`.
 
-The download uses the GitHub CLI (`gh`) logged in as your own user. Under `sudo` it runs
-as the user who ran `sudo`, with root's privileges dropped; no token is typed or stored.
+The download uses the GitHub CLI (`gh`) logged in as your own user, found at the same
+fixed paths as above. Under `sudo` it runs as the user who ran `sudo`, with root's
+privileges dropped; no token is typed or stored.
 
 ```sh
 sopshq update --check            # the running version and the newest published one
@@ -106,17 +119,22 @@ The vault is locked after every update, because the service restarts. Run
 
 ## How sopshq update checks a release
 
-It copies the release files into a root-owned staging folder, verifies the signature,
-then the binary's SHA-256, then requires the signed version to be newer than the
-installed one and the staged binary's own `version` to match it. A `dev` build refuses
-every update.
+A `dev` build refuses every update. Otherwise `sopshq update`:
 
-It then checks the install is root-owned, stops the service and any stray `serve`, backs
-the old binary up to `/opt/sopshq/backups/sopshq-<version>` (root, 0700), swaps the new
-one in, starts the service if it was running, and waits for it to report the new version.
-If that fails it restores the backup and starts it. After a good update it keeps the
-three newest backups. It never touches the config (apart from saving the release
-repository once), the data, the vault, the keys or the systemd unit.
+1. checks that the install prefix and the binary are root-owned;
+2. copies the release files into a root-owned staging folder;
+3. verifies the signature, then the binary's SHA-256;
+4. requires the signed version to be newer than the installed one, and the staged
+   binary's own `version` to match it;
+5. stops the service and any stray `serve`;
+6. backs the old binary up to `/opt/sopshq/backups/sopshq-<version>` (root, 0700) and
+   swaps the new one in;
+7. starts the service if it was running, and waits for it to report the new version. If
+   that fails, it restores the backup and starts it;
+8. after a good update, keeps the three newest backups.
+
+It never touches the config (apart from saving the release repository once), the data,
+the vault, the keys or the systemd unit.
 
 ## Rotating the key
 
@@ -138,5 +156,7 @@ Nothing beyond the key file is required. These are the places a fork usually tou
 - `internal/update/release_pubkey.hex`: your public key (written by `keygen`).
 - `.github/workflows/release.yml`: copied from `docs/examples/`.
 - `VERSION`: bumped for every release; the workflow refuses a tag that does not match.
-- `ghFetcher` in `cmd/sopshq/update_system_linux.go`: how releases are listed and
-  downloaded through `gh`, if you host releases somewhere other than GitHub.
+- `GHPaths` in `internal/update/ghpath.go`: where `gh` is looked for.
+- If you host releases somewhere other than GitHub: `ghFetcher` in
+  `cmd/sopshq/update_system_linux.go` (how installs list and download releases) and
+  `ghHost` in `cmd/releasesign/publish.go` (how `publish` reads and edits the draft).

@@ -122,8 +122,9 @@
      (SopsHQ field: <code>KeyBase</code>.) The <code>~/.config/sops/age</code> default only resolves
      for an account that HAS a home folder. A homeless service or daemon account (home is
      <code>/nonexistent</code> or missing) has no <code>~</code> to expand, so it needs an EXPLICIT,
-     account-owned keystore path instead (for example <code>/etc/&lt;service&gt;/keys</code>), which
-     SopsHQ creates and makes owner-only; that account's program then points
+     account-owned keystore path instead (for example <code>/etc/&lt;service&gt;/keys</code>). SopsHQ
+     shows the <code>sudo</code> commands that create it owner-only, and you run them once; that
+     account's program then points
      <code>SOPS_AGE_KEY_FILE</code> at the <code>keys.txt</code> inside it.</dd>
   <dt class="col-sm-3">Key file path</dt>
   <dd class="col-sm-9">The environment value a program uses to tell sops which private key file to open with
