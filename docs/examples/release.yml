@@ -1,0 +1,101 @@
+# Build and publish a GitHub Release when a version tag (v*) is pushed.
+#
+# This job builds the assets and creates a DRAFT release holding the Linux and Windows
+# binaries and SHA256SUMS (which names the release version). It holds no signing key and
+# reads no signing secret. The operator signs on their own machine and publishes the
+# draft with `go run ./cmd/releasesign publish -tag vX.Y.Z -seed <file>`, which uploads
+# SHA256SUMS.sig. `sopshq update` ignores drafts and refuses a release with no signature.
+#
+# The first step is a release GATE: it refuses to release unless the pushed tag
+# matches the VERSION file, so the tag, the binary's stamped version (build.sh
+# injects VERSION via -ldflags into main.version), and VERSION itself can never
+# drift apart. See docs/releasing.md.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # required to create the Release and upload its assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # full history + tags, so the release notes can be built from the log
+
+      - name: Verify tag matches VERSION (release gate)
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          file="$(tr -d '[:space:]' < VERSION)"
+          if [ "$tag" != "$file" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match VERSION ($file). Bump VERSION, then tag v$file."
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build binaries (vet + test + cross-build via build.sh)
+        run: bash build.sh --check
+
+      - name: Verify the built binary reports the tag version
+        run: |
+          want="$(tr -d '[:space:]' < VERSION)"
+          got="$(./dist/sopshq version)"
+          if [ "$got" != "sopshq $want" ]; then
+            echo "::error::dist/sopshq reports '$got', expected 'sopshq $want'."
+            exit 1
+          fi
+
+      - name: Assemble the release assets
+        run: |
+          # Asset names carry OS and architecture; `sopshq update` looks them up by
+          # name in SHA256SUMS.
+          mkdir -p dist/release
+          cp dist/sopshq dist/release/sopshq-linux-amd64
+          cp dist/sopshq.exe dist/release/sopshq-windows-amd64.exe
+
+      - name: Checksums with the release version
+        run: |
+          # The version is written INSIDE SHA256SUMS, so the signature covers it and an
+          # old signed release cannot be replayed as a new one.
+          v="$(tr -d '[:space:]' < VERSION)"
+          go run ./cmd/releasesign sums -version "$v" -out dist/release/SHA256SUMS \
+            dist/release/sopshq-linux-amd64 dist/release/sopshq-windows-amd64.exe
+          cat dist/release/SHA256SUMS
+
+      - name: Build release notes from the commit log
+        run: |
+          # Git is the changelog. The notes are the commit subjects since the
+          # previous version tag, so nothing has to be maintained by hand.
+          v="${GITHUB_REF_NAME#v}"
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          if [ -n "$prev" ]; then
+            range="${prev}..${GITHUB_REF_NAME}"
+            echo "Changes since ${prev}:" > RELEASE_NOTES.md
+          else
+            range="${GITHUB_REF_NAME}"
+            echo "First tagged release." > RELEASE_NOTES.md
+          fi
+          echo >> RELEASE_NOTES.md
+          git log --no-merges --format='- %s' "$range" >> RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then echo "Release v$v" > RELEASE_NOTES.md; fi
+          echo "--- release notes ---"; cat RELEASE_NOTES.md
+
+      - name: Create the draft release
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          body_path: RELEASE_NOTES.md
+          draft: true
+          files: |
+            dist/release/sopshq-linux-amd64
+            dist/release/sopshq-windows-amd64.exe
+            dist/release/SHA256SUMS

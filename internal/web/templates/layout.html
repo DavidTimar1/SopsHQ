@@ -1,0 +1,138 @@
+{{define "layout"}}<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {{if .LoggedIn}}<meta name="csrf" content="{{.CSRF}}">{{end}}
+  <title>{{.Title}} - SopsHQ</title>
+  <!-- Apply the saved theme (Bootstrap data-bs-theme) before first paint - no flash. -->
+  <script>
+    try {
+      var t = localStorage.getItem("sopshq-theme");
+      if (t !== "dark" && t !== "light") {
+        t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+      }
+      document.documentElement.setAttribute("data-bs-theme", t);
+    } catch (e) {}
+  </script>
+  <!-- Apply the saved sidebar collapsed state before paint so the body does not jump. -->
+  <script>
+    try { if (localStorage.getItem("sopshq-sidebar") === "collapsed") document.documentElement.classList.add("sidebar-collapsed"); } catch (e) {}
+  </script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%234f8cff'/%3E%3Ctext x='8' y='12' font-size='10' text-anchor='middle' fill='white' font-family='monospace'%3ES%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/vendor/dataTables.bootstrap5.min.css">
+  <link rel="stylesheet" href="/static/vendor/select2.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+{{if .LoggedIn}}
+<header class="app-header navbar navbar-expand bg-body-tertiary border-bottom px-3">
+  <button type="button" id="sidebar-toggle" class="btn btn-outline-secondary btn-sm" aria-label="Toggle navigation" title="Toggle menu">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <span class="navbar-brand mx-auto mb-0 fw-semibold">SopsHQ <span class="text-body-secondary fw-normal fs-6">{{.NodeName}}</span></span>
+  <div class="d-flex align-items-center gap-2">
+    {{if .Pending}}<a class="btn btn-sm btn-outline-danger" href="/?pending=1" title="{{.PendingSummary}}">Changes pending</a>{{end}}
+    <button type="button" class="theme-toggle btn btn-outline-secondary btn-sm" title="Toggle light/dark" aria-label="Toggle theme">
+      <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun d-none" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+    </button>
+    <div class="dropdown">
+      <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="{{.Username}}">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><span class="dropdown-header text-truncate">{{.Username}}</span></li>
+        <li><a class="dropdown-item" href="/account">Security</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+          <form method="post" action="/logout" class="px-1">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <button type="submit" class="dropdown-item">Sign out</button>
+          </form>
+        </li>
+      </ul>
+    </div>
+  </div>
+</header>
+
+<nav class="app-sidebar bg-body-tertiary border-end">
+  <ul class="nav nav-pills flex-column p-2 gap-1">
+    <li class="nav-item"><a class="nav-link" href="/"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg><span>Dashboard</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/quick-add"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg><span>Quick add</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/help"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .8-1 1.7"/><line x1="12" y1="16" x2="12" y2="16"/></svg><span>Help</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/db"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg><span>DB</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/map"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M6 8.5V12h12V8.5"/><path d="M12 12v3.5"/></svg><span>Map</span></a></li>
+    {{if .IsAdmin}}<li class="nav-item"><a class="nav-link" href="/permmap"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l8 4v6c0 4.4-3.2 7.6-8 10-4.8-2.4-8-5.6-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span>Permissions</span></a></li>{{end}}
+    <li class="nav-item"><a class="nav-link" href="/keys"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="16" r="3"/><line x1="9" y1="14" x2="20" y2="3"/><line x1="16" y1="7" x2="19" y2="10"/><line x1="13" y1="10" x2="16" y2="13"/></svg><span>Keys</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/projects"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Projects</span></a></li>
+    {{if .IsAdmin}}<li class="nav-item"><a class="nav-link" href="/secrets"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Secrets</span></a></li>{{end}}
+    <li class="nav-item"><a class="nav-link" href="/global"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c3 3 3 15 0 18c-3-3-3-15 0-18z"/></svg><span>Global</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/machines"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></svg><span>Machines</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/osusers"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16a3 3 0 0 1 6 0"/><line x1="15" y1="10" x2="18" y2="10"/><line x1="15" y1="14" x2="18" y2="14"/></svg><span>OS users</span></a></li>
+    {{if .IsAdmin}}<li class="nav-item"><a class="nav-link" href="/users"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6"/><path d="M21 19a6 6 0 0 0-4-5.6"/></svg><span>Users</span></a></li>{{end}}
+    <li class="nav-item"><a class="nav-link" href="/usage"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="21" x2="21" y2="21"/><rect x="5" y="11" width="3" height="9"/><rect x="11" y="6" width="3" height="14"/><rect x="17" y="14" width="3" height="6"/></svg><span>Usage</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/drift"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h4l8 10h4"/><path d="M4 17h4"/><path d="M16 7h4"/><path d="M17 4l3 3-3 3"/><path d="M17 14l3 3-3 3"/></svg><span>Drift</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/conflicts"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 16H3z"/><line x1="12" y1="9" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17"/></svg><span>Conflicts</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg><span>Settings</span></a></li>
+    <li class="nav-item"><a class="nav-link" href="/audit"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/></svg><span>Audit</span></a></li>
+  </ul>
+</nav>
+
+<main class="app-content">
+  {{if .Flash}}<div class="alert {{if .FlashErr}}alert-danger{{else}}alert-success{{end}} py-2" role="status">{{.Flash}}</div>{{end}}
+  {{block "content" .}}{{end}}
+  <footer class="text-body-secondary text-center small py-3 mt-4 border-top">SopsHQ {{.Version}} - control plane for SOPS/age keys</footer>
+</main>
+{{else}}
+<main class="container py-4" style="max-width: 460px;">
+  {{if .Flash}}<div class="alert {{if .FlashErr}}alert-danger{{else}}alert-success{{end}} py-2" role="status">{{.Flash}}</div>{{end}}
+  {{block "content" .}}{{end}}
+  <div class="text-end mt-3">
+    <button type="button" class="theme-toggle btn btn-outline-secondary btn-sm" title="Toggle light/dark" aria-label="Toggle theme">
+      <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun d-none" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+    </button>
+  </div>
+</main>
+{{end}}
+
+<script src="/static/vendor/jquery.min.js"></script>
+<script src="/static/vendor/bootstrap.bundle.min.js"></script>
+<script src="/static/vendor/datatables.min.js"></script>
+<script src="/static/vendor/dataTables.bootstrap5.min.js"></script>
+<script src="/static/vendor/select2.min.js"></script>
+<script src="/static/dt.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>{{end}}
+
+{{define "importAlert"}}
+{{with .Data.Import}}
+{{if .Count}}
+<div class="alert alert-warning">
+  <div><strong>Found {{.Count}} key(s) on disk not in your database.</strong>
+    Import brings each on-disk key into SopsHQ (deduped by public key); the on-disk file is not changed.</div>
+  <ul class="mb-0 mt-2 small">
+    {{range .Keystores}}{{if .Importable}}
+    <li class="d-flex flex-wrap align-items-center gap-2 mb-1">
+      <span><strong>{{.Username}}</strong> <span class="mono">{{.KeyBase}}</span> - {{len .Importable}} key(s)</span>
+      <form method="post" action="/osusers/{{.OSUserID}}/import-keys" class="d-inline">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="back" value="{{$.Path}}">
+        <button type="submit" class="btn btn-sm btn-warning">Import</button>
+      </form>
+    </li>
+    {{end}}{{end}}
+  </ul>
+</div>
+{{end}}
+{{if .PubOnly}}
+<div class="alert alert-secondary small">
+  {{.PubOnly}} public-only key file(s) are present on disk with no private key to import
+  (a public key alone cannot be adopted - there is nothing to seal). Shown for awareness only.
+</div>
+{{end}}
+{{end}}
+{{end}}

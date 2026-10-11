@@ -1,0 +1,97 @@
+{{define "content"}}
+<h1 class="h3 mb-2">Drift</h1>
+<p class="text-body-secondary">Differences between what SopsHQ intends and what is actually on disk
+   on this machine (a key never placed, a hand-edited <code>.sops.yaml</code>, a
+   stale key after a rotation elsewhere). Fix drift by running <strong>Apply</strong>
+   from the dashboard.</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About drift &amp; why it matters</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <h6 class="mt-2 mb-1">What drift is</h6>
+    <p>"Drift" is any gap between the setup SopsHQ has recorded (the intended state)
+       and the real files on this machine. It is read-only - looking here changes
+       nothing.</p>
+    <h6 class="mt-2 mb-1">What it catches</h6>
+    <ul>
+      <li>A key that was assigned but never placed on disk.</li>
+      <li>A <code>.sops.yaml</code> whose public keys no longer match what is intended
+          (for example after a key was rotated on another machine).</li>
+      <li>A placed key that is stale compared with the current one.</li>
+    </ul>
+    <h6 class="mt-2 mb-1">How to fix it</h6>
+    <p>Run <strong>Apply</strong> (here or from the dashboard). The header shows a red
+       alert whenever there are pending changes to apply, on this or any machine.</p>
+    <div class="mt-2">
+      <h6 class="mt-2 mb-1">Security note</h6>
+      <p>Drift detection only reads public facts (which files exist, which public
+         public keys a <code>.sops.yaml</code> lists). It never displays private keys or
+         secret values.</p>
+    </div>
+  </div>
+</details>
+
+{{if .Data}}
+{{$csrf := .CSRF}}
+<table class="table table-sm align-middle">
+  <thead><tr><th>Kind</th><th>Target</th><th>Detail</th><th>Resolve</th></tr></thead>
+  <tbody>
+  {{range .Data}}
+    <tr class="table-danger">
+      <td class="mono">{{.Kind}}</td>
+      <td>{{.Target}}</td>
+      <td>{{.Detail}}</td>
+      <td>
+        {{if .ProjectID}}
+          {{if .Missing}}
+            <form method="post" action="/drift/resolve" class="d-inline confirm" data-confirm="Write the secrets config for this project?">
+              <input type="hidden" name="csrf" value="{{$csrf}}">
+              <input type="hidden" name="project_id" value="{{.ProjectID}}">
+              <button type="submit" name="action" value="apply-sops" class="btn btn-sm btn-primary">Apply</button>
+            </form>
+          {{else}}
+            <div class="d-flex flex-wrap gap-1">
+              <form method="post" action="/drift/resolve" class="d-inline confirm" data-confirm="Set this project to the public keys the secrets config already uses on disk. No reader currently able to decrypt is dropped and the secrets are not re-keyed.{{if .DesiredOnly}} These keys you added but have not applied will be REMOVED from the project: {{range $i, $e := .DesiredOnly}}{{if $i}}, {{end}}{{$e}}{{end}}. Continue?{{end}}">
+                <input type="hidden" name="csrf" value="{{$csrf}}">
+                <input type="hidden" name="project_id" value="{{.ProjectID}}">
+                <button type="submit" name="action" value="match-disk" class="btn btn-sm btn-primary" title="Point this project at the public keys the on-disk secrets config already uses; no reader is dropped and the secrets are not re-keyed">Match to the on-disk keys</button>
+                {{if .DesiredOnly}}<div class="small text-body-secondary mt-1">Removes these keys you added but have not applied: {{range $i, $e := .DesiredOnly}}{{if $i}}, {{end}}{{$e}}{{end}} (no reader currently able to decrypt is dropped).</div>{{end}}
+              </form>
+              <form method="post" action="/drift/resolve" class="d-inline confirm" data-confirm="Adopt the extra public key(s) into this project IN ADDITION to its own, so no one loses access?">
+                <input type="hidden" name="csrf" value="{{$csrf}}">
+                <input type="hidden" name="project_id" value="{{.ProjectID}}">
+                <button type="submit" name="action" value="adopt-readers" class="btn btn-sm btn-outline-secondary" title="Add the extra on-disk public key(s) to this project, keeping its own too; nobody who can read the secrets loses access">Adopt readers</button>
+              </form>
+              <form method="post" action="/drift/resolve" class="d-inline confirm" data-confirm="Re-key to this project's public keys only. This DROPS the extra public key(s){{if .ExtraOnDisk}} ({{range $i, $e := .ExtraOnDisk}}{{if $i}}, {{end}}{{$e}}{{end}}){{end}} and whoever holds them can no longer decrypt. Continue?">
+                <input type="hidden" name="csrf" value="{{$csrf}}">
+                <input type="hidden" name="project_id" value="{{.ProjectID}}">
+                <button type="submit" name="action" value="rekey-desired" class="btn btn-sm btn-outline-danger" title="Rewrite to this project's public keys only; drops the extra public key(s)">Re-key to desired</button>
+              </form>
+            </div>
+          {{end}}
+        {{else}}
+          <span class="text-body-secondary small">run Apply</span>
+        {{end}}
+      </td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+<p class="text-body-secondary small">
+  <strong>Match to the on-disk keys</strong> (recommended) points this project at the
+  public keys the secrets config already uses, so the difference clears with no reader
+  dropped and nothing re-keyed - the right fix when it is one account's other identity.
+  <strong>Adopt readers</strong> keeps the extra public key(s) AND this project's own.
+  <strong>Re-key to desired</strong> rewrites to only this project's public keys and
+  drops the extras (named in the warning). <strong>Apply</strong> writes a missing
+  secrets config. Placement rows (a key not yet on disk) are fixed by Re-apply below.
+</p>
+<div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+  <form method="post" action="/apply" class="d-inline confirm" data-confirm="Re-apply desired state to this machine?">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="btn btn-primary">Re-apply (fix drift)</button>
+  </form>
+</div>
+{{else}}
+<div class="alert alert-success py-2">No drift detected: on-disk state matches the desired state.</div>
+{{end}}
+{{end}}

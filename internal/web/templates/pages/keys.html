@@ -1,0 +1,110 @@
+{{define "content"}}
+{{template "importAlert" .}}
+<h1 class="h3 mb-2">Keys</h1>
+<p class="text-body-secondary">An age keypair SopsHQ manages. <strong>shared</strong> = one keypair
+   per project, placed for several users; <strong>per_user</strong> = one keypair
+   owned by a single user.</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About keys &amp; choosing shared vs per-user (security)</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <h6 class="mt-2 mb-1">What a key is</h6>
+    <p>age (the encryption tool sops uses) works with a <em>keypair</em>: a PUBLIC
+       key (text starting <code>age1...</code>, safe to share - you encrypt
+       TO it) and a PRIVATE key (<code>AGE-SECRET-KEY-1...</code>, the real secret -
+       you decrypt WITH it). SopsHQ generates the pair, stores the private half
+       encrypted in its vault, and places it onto the right machines when you Apply.</p>
+    <h6 class="mt-2 mb-1">Lifecycle</h6>
+    <ul>
+      <li><strong>Define</strong> a key (name + type) here.</li>
+      <li><strong>Generate</strong> creates the actual keypair and seals the private
+          half into the vault.</li>
+      <li><strong>Rotate</strong> replaces the keypair and re-encrypts the project's
+          secrets to the new one (the old key can then be retired).</li>
+    </ul>
+    <div class="mt-2">
+      <h6 class="mt-2 mb-1">Shared vs per-user - the security trade-off</h6>
+      <p><strong>shared</strong>: one keypair for the whole project; everyone who may
+         decrypt holds the same private key. Simplest, but to remove one person you
+         must rotate the key and re-encrypt.</p>
+      <p><strong>per_user</strong>: each user has their OWN keypair; the project lists
+         every user's public key, so each person decrypts with their own private
+         key. Removing someone is just dropping their public key and re-keying - no
+         shared secret to rotate. Prefer per-user when more than one person needs
+         access and membership may change.</p>
+    </div>
+  </div>
+</details>
+<form method="post" action="/keys" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="text" id="key-name" name="name" placeholder="key name" aria-label="Key name" class="form-control w-auto" required>
+  <select id="key-type" name="type" aria-label="Key type" class="form-select w-auto">
+    <option value="shared">shared (per project)</option>
+    <option value="per_user">per_user</option>
+  </select>
+  <select id="key-owner" name="owner_user_id" class="form-select w-auto" aria-label="Owner OS user for a per-user key">
+    <option value="">owner (per_user only): none</option>
+    {{range .Data.OSUsers}}<option value="{{.M.UUID}}">{{.Username}}</option>{{end}}
+  </select>
+  <input type="text" id="key-note" name="note" placeholder="note (optional)" aria-label="Key note" class="form-control w-auto">
+  <button type="submit" class="btn btn-primary">Define</button>
+</form>
+<p class="small text-body-secondary mb-3">Set the <strong>owner</strong> on a <code>per_user</code>
+   key to name the single OS user who owns it. An owned per-user key can then build a
+   <a href="/global">global secret set</a> for that owner - its private key lands in the
+   owner's keystore on Apply and the set is encrypted to it. Owner is ignored for a
+   <code>shared</code> key.</p>
+
+<p class="text-body-secondary">The <strong>Used</strong> column is <strong>best-effort</strong>: it
+   counts only decrypt events that a machine reported (via the optional sops shim).
+   SopsHQ is not in the decrypt path, so it is not authoritative. See
+   <a href="/usage">Usage</a>.</p>
+{{if .Data.Rows}}
+<div class="card">
+  <div class="card-body table-responsive">
+    <table class="table table-striped table-hover align-middle dt" style="width:100%">
+      <thead><tr><th>Name</th><th class="filter">Type</th><th class="filter">Status</th><th>Public key</th><th>Placed on (machine, user, key file)</th><th>Gen</th><th>Used (best-effort)</th><th>Created</th><th class="no-sort"></th></tr></thead>
+      <tbody>
+      {{range .Data.Rows}}
+        <tr>
+          <td>{{.Name}}</td><td>{{.Type}}</td><td>{{.Status}}</td>
+          <td class="mono">{{if .Recipient}}{{.Recipient}}{{else}}<span class="text-body-secondary">not generated</span>{{end}}</td>
+          <td class="small">
+            {{if .Placements}}
+              {{range .Placements}}<div>{{if .MachineName}}<span class="text-body-secondary">{{.MachineName}}:</span> {{end}}{{.Username}} -&gt; <span class="mono">{{if .Path}}{{.Path}}{{else}}<span class="text-body-secondary">(keystore not set)</span>{{end}}</span></div>{{end}}
+            {{else}}<span class="badge text-bg-warning">{{.Lifecycle}}</span>{{end}}
+          </td>
+          <td>{{.Generation}}</td>
+          <td>{{if .UseCount}}{{.UseCount}}x, last {{fmtTime .LastUsed}}{{else}}<span class="text-body-secondary">none</span>{{end}}</td>
+          <td>{{fmtTime .CreatedAt}}</td>
+          <td class="text-end">
+            {{if not .Recipient}}
+            <form method="post" action="/keys/{{.M.UUID}}/generate" class="d-inline confirm" data-confirm="Generate an age keypair for {{.Name}}?">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button type="submit" class="btn btn-sm btn-primary">Generate</button>
+            </form>
+            {{else}}
+            <form method="post" action="/keys/{{.M.UUID}}/rotate" class="d-inline confirm" data-confirm="Rotate {{.Name}}? This re-encrypts its secrets on this machine.">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button type="submit" class="btn btn-sm btn-outline-secondary">Rotate</button>
+            </form>
+            {{end}}
+            <form method="post" action="/keys/{{.M.UUID}}/rename" class="d-inline-flex gap-1 align-items-center">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="text" id="key-rename-{{.M.UUID}}" name="name" value="{{.Name}}" class="form-control form-control-sm w-auto" style="max-width:12rem" aria-label="New name for {{.Name}}" required>
+              <button type="submit" class="btn btn-sm btn-outline-secondary">Rename</button>
+            </form>
+            <form method="post" action="/keys/{{.M.UUID}}/delete" class="d-inline confirm" data-confirm="Delete key {{.Name}}?">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{else}}
+<p class="text-body-secondary">No keys yet.</p>
+{{end}}
+{{end}}

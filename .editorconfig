@@ -1,0 +1,28 @@
+# Tells every editor the same basic formatting so contributors do not fight over
+# whitespace. Pairs with .gitattributes (which enforces line endings in git); this
+# guides the editor live.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Windows-native scripts keep CRLF (they run under cmd.exe / PowerShell).
+[*.{bat,cmd,ps1}]
+end_of_line = crlf
+
+# Makefiles require real tabs.
+[Makefile]
+indent_style = tab
+
+# Go uses tabs by convention (gofmt).
+[*.go]
+indent_style = tab
+
+# Markdown: do not trim trailing spaces (two trailing spaces = a hard line break).
+[*.md]
+trim_trailing_whitespace = false

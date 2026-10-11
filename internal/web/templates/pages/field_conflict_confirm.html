@@ -1,0 +1,45 @@
+{{define "content"}}
+{{$c := .Data.Conflict}}
+<h1 class="h3 mb-2">Confirm field choice</h1>
+<div class="alert alert-danger">
+  <strong>This overwrites one value with the other and cannot be undone.</strong>
+  Read exactly what is kept and what is discarded, then confirm below.
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">
+    <span class="badge text-bg-secondary text-uppercase">field</span> {{$c.KeyLabel}}
+    <span class="small text-body-secondary">- field: {{$c.GroupLabel}}</span>
+  </div>
+  <div class="card-body">
+    <h2 class="h6 text-success">Kept</h2>
+    <p class="mb-1">
+      {{if $c.Secret}}<span class="text-body-secondary">{{.Data.Chosen.Display}}</span>{{else}}<span class="mono">{{.Data.Chosen.Display}}</span>{{end}}
+      {{if .Data.Chosen.Origin}}<span class="text-body-secondary">(from {{.Data.Chosen.Origin}})</span>{{end}}
+    </p>
+
+    <h2 class="h6 text-danger mt-3">Discarded</h2>
+    <p class="mb-1">
+      {{if $c.Secret}}<span class="text-body-secondary">{{.Data.Discarded.Display}}</span>{{else}}<span class="mono">{{.Data.Discarded.Display}}</span>{{end}}
+      {{if .Data.Discarded.Origin}}<span class="text-body-secondary">(from {{.Data.Discarded.Origin}})</span>{{end}}
+    </p>
+
+    <p class="small text-body-secondary mt-3">The chosen value is written with a newer version so it applies on
+       both machines. Every other field of this record is left exactly as it is.</p>
+  </div>
+</div>
+
+<form method="post" action="/conflicts/field/execute">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="id" value="{{$c.ID}}">
+  <input type="hidden" name="pick" value="{{.Data.Pick}}">
+  <div class="form-check mb-2">
+    <input class="form-check-input" type="checkbox" name="confirm_overwrite" value="yes" id="confirm_overwrite" required>
+    <label class="form-check-label" for="confirm_overwrite">
+      I understand this discards the other value shown above.
+    </label>
+  </div>
+  <button type="submit" class="btn btn-danger">Apply the chosen value</button>
+  <a href="/conflicts" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{{end}}

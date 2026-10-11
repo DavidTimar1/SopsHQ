@@ -1,0 +1,59 @@
+{{define "content"}}
+<div class="card">
+  <div class="card-body">
+    <h1 class="h3 mb-2">Enroll your authenticator</h1>
+    <p>Add this account to an authenticator app (Google Authenticator, 1Password,
+       etc.), then enter the current 6-digit code to confirm.</p>
+
+    {{if .Data.QR}}
+    <div class="text-center mb-3">
+      <img class="img-fluid border rounded" style="max-width:220px" src="{{.Data.QR}}" alt="Authenticator setup QR">
+      <p class="text-body-secondary">Scan this with your authenticator app, or use the manual key below.</p>
+    </div>
+    {{end}}
+
+    <div class="mb-3">
+      <div class="fw-semibold mb-1">Manual entry key</div>
+      <div class="d-flex align-items-center flex-wrap gap-2">
+        <code id="totp-secret" class="mono user-select-all">{{.Data.Secret}}</code>
+        <button type="button" class="btn btn-sm btn-outline-secondary copy-btn" data-copy-target="totp-secret">Copy</button>
+      </div>
+    </div>
+
+    <details class="mb-3">
+      <summary class="text-primary small" style="cursor:pointer">otpauth URI (for QR generators)</summary>
+      <div class="mt-2">
+        <code class="mono small user-select-all">{{.Data.URI}}</code>
+      </div>
+    </details>
+
+    <div class="mb-3">
+      <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+        <h2 class="h5 mb-0">Recovery codes</h2>
+        <button type="button" class="btn btn-sm btn-outline-secondary copy-btn" data-copy-target="recovery-codes">Copy all</button>
+      </div>
+      <p class="text-body-secondary">Save these one-time backup codes somewhere safe (a password
+         manager, or printed and locked away). If you lose your authenticator, you
+         can sign in with one of these instead of a 6-digit code. Each code works
+         once. They are shown only now and cannot be displayed again.</p>
+      <ul id="recovery-codes" class="list-unstyled row row-cols-2 g-1 mb-0">
+        {{range .Data.RecoveryCodes}}<li><code class="mono user-select-all">{{.}}</code></li>{{end}}
+      </ul>
+    </div>
+
+    <form method="post" action="/setup/totp">
+      <div class="mb-3">
+        <label class="form-label" for="totp-code">Current code</label>
+        <input class="form-control" type="text" id="totp-code" name="code" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" placeholder="6 digits" autofocus required>
+      </div>
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" id="totp-saved" name="saved" value="yes" required>
+        <label class="form-check-label" for="totp-saved">I have saved my recovery codes.</label>
+      </div>
+      <button type="submit" class="btn btn-primary">Confirm and continue</button>
+    </form>
+    <div class="alert alert-warning py-2 mt-4">The manual key and the recovery codes are shown once. Store
+       them now - they cannot be shown again.</div>
+  </div>
+</div>
+{{end}}

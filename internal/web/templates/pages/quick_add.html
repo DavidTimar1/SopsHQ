@@ -1,0 +1,143 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h3 mb-2">Quick add</h1>
+<details class="mb-3" open>
+  <summary class="text-primary small" style="cursor:pointer">Add a secret in one guided flow.</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <ul>
+      <li>Pick the secret, choose who should be able to open it and where it is stored,
+          then pick the OS accounts. SopsHQ creates whatever is missing (folder, key pair,
+          secrets file) and encrypts the secret.</li>
+      <li>Remember the two gates: an account can open a secret only if (1) it holds a
+          private key that opens it, and (2) it can read the secrets file on disk.</li>
+      <li>SopsHQ never runs as root. If a step needs system privileges (like creating an
+          OS account), SopsHQ shows you the exact sudo commands to run first.</li>
+    </ul>
+    <p class="mb-0"><a href="/help">Full terminology and how it works -&gt;</a></p>
+  </div>
+</details>
+
+{{if not $d.HasLocalMachine}}
+  <div class="alert alert-warning py-2">Designate this machine first
+     (<a href="/machines">Machines -&gt; this machine</a>) to use Quick add.</div>
+{{else}}
+
+{{if $d.Done}}
+  <div class="alert alert-success py-2">Done. SopsHQ:</div>
+  <ul>
+    {{range $d.Result.Steps}}<li>{{.}}</li>{{end}}
+  </ul>
+  <p><a href="/quick-add">Add another</a></p>
+{{else}}
+
+{{range $d.Alerts}}
+  {{if eq .Level "block"}}<div class="alert alert-danger py-2">{{.Text}}</div>
+  {{else if eq .Level "warn"}}<div class="alert alert-warning py-2">[warning] {{.Text}}</div>
+  {{else}}<div class="alert alert-secondary py-2">[note] {{.Text}}</div>{{end}}
+{{end}}
+
+<form method="post" action="/quick-add" id="quick-add">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+  <h2 class="h4 mt-4 mb-2">1. The secret</h2>
+  <p class="text-body-secondary">The value is encrypted immediately; it is never written in plaintext or shown again.</p>
+  <div class="mb-3">
+    <label class="form-label" for="qa-name">Secret name</label>
+    <input type="text" id="qa-name" name="name" placeholder="SECRET_NAME" required
+           pattern="[A-Za-z0-9_.\-]+" title="letters, digits, _ - ." value="{{$d.In.Name}}" class="form-control w-auto">
+  </div>
+  <div class="mb-3">
+    <label class="form-label" for="qa-value">Value</label>
+    <textarea id="qa-value" name="value" rows="2" placeholder="value" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore class="form-control secret-field">{{$d.In.Value}}</textarea>
+  </div>
+
+  <h2 class="h4 mt-4 mb-2">2. Who opens it, and where is it stored?</h2>
+  <div class="mb-3">
+    <div class="form-check border rounded p-2">
+      <input class="form-check-input" type="radio" id="qa-scope-project" name="scope" value="project" aria-describedby="qa-scope-project-desc" {{if ne $d.In.Scope "global"}}checked{{end}}>
+      <label class="form-check-label" for="qa-scope-project">In a <strong>project folder</strong></label>
+      <div id="qa-scope-project-desc" class="text-body-secondary ms-1">One secrets file lives in the project's folder. Every OS account you
+         pick gets a copy of the project's private key and can open it. Best when the accounts already share that folder.</div>
+    </div>
+    <div class="form-check border rounded p-2 mt-2">
+      <input class="form-check-input" type="radio" id="qa-scope-global" name="scope" value="global" aria-describedby="qa-scope-global-desc" {{if eq $d.In.Scope "global"}}checked{{end}}>
+      <label class="form-check-label" for="qa-scope-global">As a <strong>secret set</strong> (no project folder)</label>
+      <div id="qa-scope-global-desc" class="text-body-secondary ms-1">Each OS account you pick gets its OWN encrypted copy in its OWN keystore.
+         Best for a service account that should not live in a project folder.</div>
+    </div>
+  </div>
+
+  <div class="qa-project{{if eq $d.In.Scope "global"}} hidden{{end}}">
+    <h2 class="h4 mt-4 mb-2">3. Project</h2>
+    <p class="text-body-secondary">Pick a project or create one. A project is a name plus a folder on this
+       machine where its secrets file is written.</p>
+    <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+      <div>
+        <label class="form-label" for="qa-project-id">Project</label>
+        <select id="qa-project-id" name="project_id" class="form-select w-auto">
+          <option value="">(create a new project)</option>
+          {{range $d.Projects}}<option value="{{.ID}}" {{if eq .ID $d.In.ProjectID}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="qa-new-project">New project name</label>
+        <input type="text" id="qa-new-project" name="new_project_name" placeholder="new project name" value="{{$d.In.NewProjectName}}" class="form-control w-auto">
+      </div>
+      <div>
+        <label class="form-label" for="qa-path">Folder path</label>
+        <div class="input-group w-auto">
+          <input type="text" name="project_path" id="qa-path" placeholder="local folder path" value="{{$d.In.ProjectPath}}" class="form-control">
+          <button type="button" class="btn btn-outline-secondary browse" data-target="qa-path" title="Browse folders on this machine">Browse</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="qa-global{{if ne $d.In.Scope "global"}} hidden{{end}}">
+    <h2 class="h4 mt-4 mb-2">3. Secret set</h2>
+    <p class="text-body-secondary">Pick a set or create one. A set is a name that groups global secrets and
+       the OS accounts allowed to open them. Its files are stored under each chosen account's keystore
+       at &lt;keystore&gt;/global/&lt;set&gt;/.</p>
+    <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+      <div>
+        <label class="form-label" for="qa-set-id">Secret set</label>
+        <select id="qa-set-id" name="global_set_id" class="form-select w-auto">
+          <option value="">(create a new set)</option>
+          {{range $d.Sets}}<option value="{{.ID}}" {{if eq .ID $d.In.GlobalSetID}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div>
+        <label class="form-label" for="qa-new-set">New set name</label>
+        <input type="text" id="qa-new-set" name="new_set_name" placeholder="new set name (letters, digits, _ -)"
+               pattern="[A-Za-z0-9_-]+" value="{{$d.In.NewSetName}}" class="form-control w-auto">
+      </div>
+    </div>
+  </div>
+
+  <h2 class="h4 mt-4 mb-2">4. Which OS accounts?</h2>
+  <ul class="text-body-secondary">
+    <li><strong>In a project folder:</strong> These accounts each receive a copy of the project's private key. Gate 2 reminder: they must also be able to READ the project folder - SopsHQ warns below if one likely cannot.</li>
+    <li><strong>As a secret set:</strong> These accounts are the ones allowed to open the set. Each must already have a key pair (from an earlier setup); SopsHQ blocks and tells you which do not.</li>
+  </ul>
+  {{if $d.Users}}
+  <div class="d-flex flex-wrap gap-3 mb-3">
+    {{range $d.Users}}
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="qa-user-{{.ID}}" name="user" value="{{.ID}}" {{if index $d.Picked .ID}}checked{{end}}>
+      <label class="form-check-label" for="qa-user-{{.ID}}">{{.Name}}{{if not .HasKey}} <span class="text-body-secondary small">(no key yet)</span>{{end}}</label>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="alert alert-warning py-2">No OS accounts on this machine yet. Add one
+     (<a href="/osusers">OS users -&gt; Add</a>) first.</div>
+  {{end}}
+
+  <div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+    <button type="submit" name="action" value="check" class="btn btn-outline-secondary">Check</button>
+    <button type="submit" name="action" value="run" class="btn btn-primary">Set it up</button>
+  </div>
+</form>
+{{end}}
+{{end}}
+{{end}}

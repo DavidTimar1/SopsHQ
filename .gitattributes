@@ -1,0 +1,85 @@
+# .gitattributes - stable, cross-platform line endings
+# (Windows / WSL / Git Bash / Linux / macOS).
+#
+# DEFAULT: every text file is stored LF in the repo and checked out LF on EVERY OS.
+# One LF policy keeps bash scripts and config working under Git Bash / WSL on Windows
+# (a shell script checked out with CRLF breaks), and makes each file byte-identical on
+# every machine. Git still auto-detects text vs binary, so unlisted text types are still
+# handled and binaries are never EOL-converted. The exceptions below are the few files
+# where a DIFFERENT ending is correct.
+* text=auto eol=lf
+
+# Windows-native scripts: keep CRLF. These run under cmd.exe / PowerShell, never under
+# bash, and CRLF is their native convention.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Files we author: force LF explicitly (documents intent, and pins "text" so a file is
+# never mis-detected as binary). These must stay LF to run under bash or be read by Linux tools.
+*.sh     text eol=lf
+*.bash   text eol=lf
+*.zsh    text eol=lf
+*.mjs    text eol=lf
+*.cjs    text eol=lf
+*.js     text eol=lf
+*.jsx    text eol=lf
+*.ts     text eol=lf
+*.tsx    text eol=lf
+*.py     text eol=lf
+*.rb     text eol=lf
+*.php    text eol=lf
+*.go     text eol=lf
+*.rs     text eol=lf
+*.json   text eol=lf
+*.jsonc  text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.toml   text eol=lf
+*.ini    text eol=lf
+*.cfg    text eol=lf
+*.conf   text eol=lf
+*.md     text eol=lf
+*.txt    text eol=lf
+*.html   text eol=lf
+*.css    text eol=lf
+*.scss   text eol=lf
+*.sql    text eol=lf
+*.xml    text eol=lf
+*.svg    text eol=lf
+
+# Binary / asset types: never apply EOL conversion or text diffs.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.bmp    binary
+*.ico    binary
+*.webp   binary
+*.pdf    binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.eot    binary
+*.zip    binary
+*.gz     binary
+*.tar    binary
+*.7z     binary
+*.mp4    binary
+*.webm   binary
+*.mov    binary
+*.mp3    binary
+*.wav    binary
+*.exe    binary
+*.dll    binary
+*.so     binary
+*.dylib  binary
+*.wasm   binary
+*.bin    binary
+*.db     binary
+*.sqlite binary
+
+# Project-specific overrides go here (add per repo as needed). Example: a template file
+# consumed only by a Linux script must stay LF even if its extension is unusual:
+*.template text eol=lf

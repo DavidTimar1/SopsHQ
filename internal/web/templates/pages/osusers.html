@@ -1,0 +1,165 @@
+{{define "content"}}
+{{template "importAlert" .}}
+<h1 class="h3 mb-2">OS users</h1>
+<p class="text-body-secondary">Operating-system accounts that hold age private keys (for example
+   <code>alice</code> on the linux server, or a no-login daemon like <code>mailsvc</code>).</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About OS users, the keystore folder &amp; where sops looks</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <p class="mb-2"><strong>What an OS user is.</strong> A real account on one of your machines - a human
+       login (like <code>alice</code>) or a service/daemon with no login (like <code>mailsvc</code>). SopsHQ
+       places that account's private key (<code>keys.txt</code>) into its <strong>keystore folder</strong>,
+       owned by and readable only by that account.</p>
+    <p class="mb-2"><strong>The keystore folder.</strong> The default is <code>~/.config/sops/age</code> (the
+       standard sops location), so an account <em>with a home</em> works with no extra setup:
+       <code>sops</code> looks there automatically. You can point it at any other folder instead - for example
+       a folder on an encrypted drive.</p>
+    <p class="mb-2"><strong>Store on a secure drive.</strong> Tick the box when adding a user to keep
+       <code>keys.txt</code> on an encrypted drive. SopsHQ writes the real file there and, for an account with a
+       home, makes the default <code>~/.config/sops/age/keys.txt</code> a symlink to it, so the drive being
+       locked simply makes decryption fail safe rather than leaking the key.</p>
+    <p class="mb-2"><strong>Service accounts with no home.</strong> A homeless daemon account (home
+       <code>/nonexistent</code>) cannot use the <code>~/.config/sops/age</code> default - it needs an explicit,
+       account-owned folder such as <code>/etc/&lt;service&gt;/keys</code>. SopsHQ checks the account with
+       <code>getent</code> (no privileges) and, when a step needs root, shows you the exact
+       <code>sudo</code> commands to run below.</p>
+    <p class="mb-0"><strong>SopsHQ never runs as root.</strong> It only does what its own account can do. Creating
+       an account, giving it a home, or making a folder in another account's space are shown as
+       <code>sudo</code> commands for you to run; SopsHQ continues once they are done.</p>
+  </div>
+</details>
+
+<div class="card mb-3">
+  <div class="card-header">Add an OS user</div>
+  <div class="card-body">
+    <form method="post" action="/osusers" id="osu-form" class="row g-2 align-items-start">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="col-md-3">
+        <label class="form-label mb-1" for="osu-machine">Machine</label>
+        <select name="machine_id" id="osu-machine" class="form-select" required>
+          <option value="">machine...</option>
+          {{range .Data.Machines}}<option value="{{.M.UUID}}" data-os="{{.OS}}" data-local="{{if eq .M.UUID $.Data.LocalID}}1{{end}}">{{.Name}} ({{.OS}})</option>{{end}}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label mb-1" for="osu-username">Username</label>
+        <input type="text" name="os_username" id="osu-username" class="form-control" placeholder="username" required>
+      </div>
+      <div class="col-md-4 osu-keybase">
+        <label class="form-label mb-1" for="osu-keybase">Keystore folder</label>
+        <div class="input-group">
+          <input type="text" name="key_base" id="osu-keybase" class="form-control" value="{{.Data.DefaultKeyBase}}" placeholder="{{.Data.DefaultKeyBase}}">
+          <button type="button" class="btn btn-outline-secondary browse" data-target="osu-keybase" data-machine="osu-machine" title="Browse folders on this machine">Browse</button>
+        </div>
+        <div class="form-text">Where <code>keys.txt</code> lives. The default works for an account with a home.</div>
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="use_secure" value="1" id="osu-use-secure">
+          <label class="form-check-label" for="osu-use-secure">Store the private key on a secure drive (symlink)</label>
+        </div>
+      </div>
+      <div class="col-md-7 osu-secure hidden">
+        <label class="form-label mb-1" for="osu-secure-dir">Real folder on the secure drive</label>
+        <div class="input-group">
+          <input type="text" name="secure_dir" id="osu-secure-dir" class="form-control" placeholder="e.g. /srv/sopshq-keys or Z:\keys\sops">
+          <button type="button" class="btn btn-outline-secondary browse" data-target="osu-secure-dir" data-machine="osu-machine" title="Browse folders on this machine">Browse</button>
+        </div>
+        <div class="form-text">The real <code>keys.txt</code> goes here; the default sops location becomes a symlink to it (for an account with a home).</div>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{{if .Data.Rows}}
+<div class="card mb-3">
+  <div class="card-body table-responsive">
+    <table class="table table-striped table-hover align-middle dt" style="width:100%">
+      <thead><tr><th>User</th><th class="filter">Machine</th><th>Keystore</th><th>Status</th><th>Discovery</th><th class="no-sort"></th></tr></thead>
+      <tbody>
+      {{range .Data.Rows}}
+        <tr>
+          <td>{{.Username}}</td><td>{{.MachineName}}</td><td class="mono">{{if .KeyBase}}{{.KeyBase}}{{else}}<span class="text-body-secondary">(not set)</span>{{end}}</td>
+          <td>
+            {{if .Setup}}
+              {{if not .Setup.Supported}}<span class="badge text-bg-secondary">not checked</span>
+              {{else if not .Setup.Exists}}<span class="badge text-bg-warning">account missing</span>
+              {{else if .Setup.NeedsOperator}}<span class="badge text-bg-warning">action needed</span>
+              {{else}}<span class="badge text-bg-success">ready</span>{{end}}
+            {{else}}<span class="badge text-bg-secondary">on {{.MachineName}}</span>{{end}}
+          </td>
+          <td>
+            {{with .Discovery}}
+              {{if eq .Verdict "found"}}<span class="badge text-bg-success" title="SOPS_AGE_KEY_FILE or the {{.LinkKind}} points at this keystore">sops can find this key</span>
+              {{else if eq .Verdict "conflict"}}<span class="badge text-bg-warning" title="A discovery pointer points at a different file - left untouched">conflict - points elsewhere</span>
+              {{else if eq .Verdict "n/a"}}<span class="badge text-bg-secondary" title="This is another account's key store under the shared keybase root. That user reaches their key through a POSIX ACL and calls sops with explicit paths, so no home export or symlink is needed.">n/a - reached via ACL</span>
+              {{else}}<span class="badge text-bg-danger" title="Nothing points at this keystore - apps cannot find the key">NOT wired</span>{{end}}
+            {{else}}<span class="text-body-secondary">-</span>{{end}}
+          </td>
+          <td class="text-end">
+            {{if and .Discovery (ne .Discovery.Verdict "n/a")}}
+            <form method="post" action="/osusers/{{.M.UUID}}/fix-discovery" class="d-inline">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button type="submit" class="btn btn-sm btn-outline-primary" title="Create any missing SOPS_AGE_KEY_FILE / {{.Discovery.LinkKind}}; never overwrites a custom one">Fix discovery</button>
+            </form>
+            {{end}}
+            <form method="post" action="/osusers/{{.M.UUID}}/delete" class="d-inline confirm" data-confirm="Delete OS user {{.Username}}?">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{range .Data.Rows}}{{if and .Setup .Setup.NeedsOperator}}
+<div class="card mb-2 border-warning-subtle">
+  <div class="card-header py-2 small">Keystore setup for <strong>{{.Username}}</strong> on {{.MachineName}}</div>
+  <div class="card-body py-2">
+    {{if or .Setup.Commands .Setup.SymlinkCmd}}
+    <p class="small mb-1">Run these <code>sudo</code> commands on the machine, then continue. SopsHQ never runs them for you.</p>
+    <pre class="small bg-body-tertiary border rounded p-2 mb-2"><code>{{range .Setup.Commands}}{{.}}
+{{end}}{{if .Setup.SymlinkCmd}}{{.Setup.SymlinkCmd}}
+{{end}}</code></pre>
+    {{end}}
+    {{if .Setup.Notes}}<ul class="small text-body-secondary mb-0">{{range .Setup.Notes}}<li>{{.}}</li>{{end}}</ul>{{end}}
+  </div>
+</div>
+{{end}}{{end}}
+
+{{range .Data.Rows}}{{if and .Discovery (ne .Discovery.Verdict "n/a")}}
+<div class="card mb-2">
+  <div class="card-header py-2 small d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span>Discovery for <strong>{{.Username}}</strong> on {{.MachineName}} - does sops find this key?</span>
+    <form method="post" action="/osusers/{{.M.UUID}}/fix-discovery" class="d-inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button type="submit" class="btn btn-sm btn-outline-primary">Fix discovery</button>
+    </form>
+  </div>
+  <div class="card-body py-2 small">
+    {{with .Discovery}}
+    <p class="mb-1">
+      {{if eq .Verdict "found"}}<span class="badge text-bg-success">sops can find this key</span>
+      {{else if eq .Verdict "conflict"}}<span class="badge text-bg-warning">conflict - a pointer points elsewhere</span>
+      {{else}}<span class="badge text-bg-danger">NOT wired - apps cannot find this key</span>{{end}}
+    </p>
+    <ul class="text-body-secondary mb-1">
+      <li><code>{{.EnvName}}</code>: {{if .EnvValue}}<span class="mono">{{.EnvValue}}</span>{{if .EnvHere}} <span class="text-success">(points here)</span>{{else}} <span class="text-warning">(points elsewhere)</span>{{end}}{{else}}<span class="text-body-secondary">(unset)</span>{{end}}</li>
+      <li>{{.LinkKind}} <span class="mono">{{.LinkPath}}</span>: {{if .LinkExists}}{{if .LinkTarget}}-&gt; <span class="mono">{{.LinkTarget}}</span>{{end}}{{if .LinkHere}} <span class="text-success">(points here)</span>{{else}} <span class="text-warning">(points elsewhere)</span>{{end}}{{else}}<span class="text-body-secondary">(absent)</span>{{end}}</li>
+    </ul>
+    {{end}}
+    <p class="text-body-secondary mb-1"><strong>Fix discovery</strong> creates any missing pointer so sops finds this key. It never overwrites a pointer you set on purpose (that shows as a conflict for you to resolve).</p>
+    <p class="text-body-secondary mb-0"><strong>After a change:</strong> a new <code>{{.Discovery.EnvName}}</code> value takes effect for a program only after it is restarted. Restart SopsHQ and any app that reads the key so the new value applies.</p>
+  </div>
+</div>
+{{end}}{{end}}
+{{else}}
+<p class="text-body-secondary">No OS users yet.</p>
+{{end}}
+{{end}}

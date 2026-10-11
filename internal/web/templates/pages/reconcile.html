@@ -1,0 +1,62 @@
+{{define "content"}}
+{{$d := .Data}}
+{{$x := $d.Diff}}
+<h1 class="h3 mb-2">External change detected</h1>
+
+<div class="alert alert-warning py-2">
+  A managed file changed on disk since SopsHQ last wrote it - somebody edited it
+  <strong>outside SopsHQ</strong>. SopsHQ stopped before overwriting it. Choose what
+  to do. Only NON-secret facts (paths, public keys, secret names) are shown below;
+  no secret value is read or displayed.
+</div>
+
+<table class="table table-sm align-middle">
+  <tbody>
+    <tr><th class="text-nowrap">What</th><td>
+      {{if eq $x.Kind "keys.txt"}}an OS user's key store (<code>keys.txt</code>)
+      {{else if eq $x.Kind "sops.yaml"}}a project's <code>.sops.yaml</code> public keys
+      {{else if eq $x.Kind "secrets.yaml"}}a project's <code>secrets.yaml</code>
+      {{else}}{{$x.Kind}}{{end}}
+      {{if $x.Target}} - <strong>{{$x.Target}}</strong>{{end}}
+    </td></tr>
+    <tr><th class="text-nowrap">Where</th><td class="mono">{{$x.Path}}</td></tr>
+
+    {{if $x.Note}}
+      <tr><th class="text-nowrap">Change</th><td>{{$x.Note}}</td></tr>
+    {{end}}
+
+    {{if or $x.RecipientsAdded $x.RecipientsRemoved}}
+      <tr><th class="text-nowrap">Public keys</th><td>
+        {{range $x.RecipientsAdded}}<div><span class="badge text-bg-success">added on disk</span> <span class="mono small">{{.}}</span></div>{{end}}
+        {{range $x.RecipientsRemoved}}<div><span class="badge text-bg-danger">removed on disk</span> <span class="mono small">{{.}}</span></div>{{end}}
+      </td></tr>
+    {{end}}
+
+    {{if or $x.NamesAdded $x.NamesRemoved}}
+      <tr><th class="text-nowrap">Secret names</th><td>
+        {{range $x.NamesAdded}}<div><span class="badge text-bg-success">added on disk</span> <code>{{.}}</code></div>{{end}}
+        {{range $x.NamesRemoved}}<div><span class="badge text-bg-danger">removed on disk</span> <code>{{.}}</code></div>{{end}}
+      </td></tr>
+    {{end}}
+  </tbody>
+</table>
+
+<p class="text-body-secondary">
+  <strong>Adopt</strong> keeps the on-disk version and starts tracking it (for a key
+  store this also imports the manually-added key into the vault). <strong>Overwrite</strong>
+  replaces it with SopsHQ's desired state (explicit and audited). <strong>Cancel</strong>
+  changes nothing.
+</p>
+
+<form method="post" action="/reconcile">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="kind" value="{{$x.Kind}}">
+  <input type="hidden" name="project_id" value="{{$x.ProjectID}}">
+  <input type="hidden" name="os_user_id" value="{{$x.OSUserID}}">
+  <div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+    <button type="submit" name="action" value="adopt" class="btn btn-primary">Adopt the on-disk version</button>
+    <button type="submit" name="action" value="overwrite" class="btn btn-outline-danger">Overwrite with SopsHQ's state</button>
+    <button type="submit" name="action" value="cancel" class="btn btn-outline-secondary">Cancel</button>
+  </div>
+</form>
+{{end}}

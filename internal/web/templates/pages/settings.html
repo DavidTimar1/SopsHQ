@@ -1,0 +1,353 @@
+{{define "content"}}
+<h1 class="h3 mb-2">Settings</h1>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About settings</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <h6 class="mt-2 mb-1">What this page is</h6>
+    <p>Where this machine keeps things, and how SopsHQ backs itself up. The
+       <strong>Paths</strong> table shows every folder, file, and address SopsHQ and
+       sops use on this machine, so you never have to guess where they live. The
+       <strong>Backups</strong> panel controls the encrypted self-backup of this
+       install.</p>
+    <div class="mt-2">
+      <h6 class="mt-2 mb-1">Security note</h6>
+      <p>This page shows paths, names, counts, and status only - never a secret
+         value. The backup password is sealed with the vault and is never displayed.</p>
+    </div>
+  </div>
+</details>
+
+<h2 class="h4 mt-4 mb-2">Paths this machine uses</h2>
+<p class="text-body-secondary">Where SopsHQ and sops keep things on <strong>{{.Data.Paths.NodeName}}</strong>.
+   To change the panel's port, edit <code>panel_listen</code> in the config file and
+   restart SopsHQ.</p>
+<table class="table table-sm align-middle">
+  <tbody>
+    <tr><th>Config file <span class="info-i" tabindex="0" title="The JSONC config that tells SopsHQ how to start: this node's identity, its listen ports, and where the data and vault live. It holds startup settings, never a secret value.">i</span></th><td class="mono">{{.Data.Paths.ConfigPath}}</td></tr>
+    <tr><th>Location pointer <span class="info-i" tabindex="0" title="A small file recording where the data directory lives, so a later run finds this install even when the data sits on a locked encrypted volume. Not a secret.">i</span></th><td class="mono">{{if .Data.Paths.PointerWritten}}{{.Data.Paths.PointerPath}} <span class="text-body-secondary">(records where the data lives)</span>{{else}}<span class="text-body-secondary">not written (would land on the data volume){{if .Data.Paths.MachinePointerPath}}; the machine pointer below is used instead{{end}}</span>{{end}}</td></tr>
+    {{if .Data.Paths.MachinePointerPath}}<tr><th>Machine pointer <span class="info-i" tabindex="0" title="The fixed, machine-wide file a system install writes so any user's bare run finds this install, no matter which user runs it. Not a secret.">i</span></th><td class="mono">{{.Data.Paths.MachinePointerPath}} <span class="text-body-secondary">(records where the data lives)</span></td></tr>{{end}}
+    <tr><th>Panel address (port) <span class="info-i" tabindex="0" title="The host:port the admin panel listens on. To move it, edit panel_listen in the config file and restart SopsHQ.">i</span></th><td class="mono">{{.Data.Paths.PanelListen}}</td></tr>
+    <tr><th>Agent address <span class="info-i" tabindex="0" title="The host:port the machine-to-machine agent listens on (plain HTTP over Tailscale, authenticated by the shared transfer key) for replication and remote key placement between your machines.">i</span></th><td class="mono">{{.Data.Paths.AgentListen}}</td></tr>
+    <tr><th>Data dir (store + oplog) <span class="info-i" tabindex="0" title="Folder holding the JSON record store, the replication oplog, and the audit log. Any private keys kept here are vault-sealed (encrypted), never plaintext.">i</span></th><td class="mono">{{.Data.Paths.DataDir}}</td></tr>
+    <tr><th>Vault dir <span class="info-i" tabindex="0" title="Folder holding the encrypted vault (vault.json). The vault stores age private keys and other secrets sealed with AES-256-GCM; it never auto-unlocks at boot.">i</span></th><td class="mono">{{.Data.Paths.VaultDir}}</td></tr>
+    <tr><th>Audit log <span class="info-i" tabindex="0" title="Append-only log of actions taken in the panel, recorded by name or UUID and outcome only - never a secret value.">i</span></th><td class="mono">{{.Data.Paths.AuditPath}}</td></tr>
+    <tr><th>sops binary <span class="info-i" tabindex="0" title="Path to the sops executable SopsHQ runs to encrypt and decrypt files. '(not found on PATH)' means sops is not installed or not on PATH.">i</span></th><td class="mono">{{.Data.Paths.SopsBinary}}</td></tr>
+    <tr><th>age-keygen binary <span class="info-i" tabindex="0" title="Path to age-keygen, the tool SopsHQ runs to generate age keypairs. '(not found on PATH)' means it is not installed or not on PATH.">i</span></th><td class="mono">{{.Data.Paths.AgeBinary}}</td></tr>
+    <tr><th>SOPS_AGE_KEY_FILE <span class="info-i" tabindex="0" title="The current value of this environment variable - a PATH to a key file, not a key itself. '(not set)' means sops falls back to its default location below.">i</span></th><td class="mono">{{if .Data.Paths.EnvKeyFile}}{{.Data.Paths.EnvKeyFile}}{{else}}<span class="text-body-secondary">(not set)</span>{{end}}</td></tr>
+    <tr><th>sops default key path <span class="info-i" tabindex="0" title="Where sops looks for an age key when no environment variable is set. This is just a LOCATION - it may be empty or not exist; it does NOT necessarily hold a real key.">i</span></th><td class="mono">{{.Data.Paths.SopsDefault}}</td></tr>
+    {{range .Data.Paths.LocalBases}}
+      <tr><th>Key store - {{.Username}} <span class="info-i" tabindex="0" title="The folder where this OS user's age private key (keys.txt) is placed, readable only by that user. Keep it on an encrypted volume so the key is unreadable until unlocked.">i</span></th><td class="mono">{{if .KeyBase}}{{.KeyBase}}{{else}}<span class="text-body-secondary">(not set)</span>{{end}}</td></tr>
+    {{end}}
+  </tbody>
+</table>
+
+<h2 class="h4 mt-4 mb-2">Keys root folder</h2>
+<p class="text-body-secondary">The shared keys root (<code>keybase_root</code>) each local OS user with no
+   keystore path of its own derives its key store from, at
+   <code>&lt;root&gt;/&lt;username&gt;/keys.txt</code>. It is machine-local (never replicated) and
+   optional - leave it unset to keep keys under each user's home. <strong>Changing it moves no
+   key</strong>: it only changes where a key is placed from now on, and keys already placed stay
+   exactly where they are.</p>
+<table class="table table-sm align-middle">
+  <tbody>
+    <tr><th>Current root</th><td class="mono">{{if .Data.Keybase.Root}}{{.Data.Keybase.Root}}{{else}}<span class="text-body-secondary">(not set - keys stay under each user's home)</span>{{end}}</td></tr>
+  </tbody>
+</table>
+{{if .IsAdmin}}
+<div class="card mb-3">
+  <div class="card-header">Change the keys root folder</div>
+  <div class="card-body">
+    <form method="post" action="/settings/keybase-root" class="d-flex flex-wrap gap-2 align-items-end">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div>
+        <label class="form-label mb-1" for="kb-root">Absolute folder path</label>
+        <input type="text" id="kb-root" name="keybase_root" value="{{.Data.Keybase.Root}}" placeholder="leave blank for none" class="form-control w-auto">
+        <div class="form-text">Must already exist as a folder, and be different from the data directory.</div>
+      </div>
+      <button type="submit" class="btn btn-primary">Save keys root folder</button>
+    </form>
+  </div>
+</div>
+{{else}}
+<p class="text-body-secondary">Keys root folder controls are available to administrators.</p>
+{{end}}
+
+<h2 class="h4 mt-4 mb-2">Backups</h2>
+<p class="text-body-secondary">A backup is an encrypted archive of this install - the data directory
+   (your vault-sealed keys, store, oplog, audit), the config, and a plain restore
+   guide - sealed as a whole with AES-256-GCM under a <strong>backup password</strong>
+   you set. SopsHQ never stores that password in the clear: it keeps only a
+   vault-sealed copy. <strong>Save the password in your password manager too</strong> -
+   it is required to restore and cannot be recovered from the backup itself.</p>
+<table class="table table-sm align-middle">
+  <tbody>
+    <tr><th>Backup password</th><td>{{if .Data.Backup.PasswordSet}}Set{{else}}<span class="text-body-secondary">Not set</span> - the daily backup cannot run until it is set{{end}}</td></tr>
+    <tr><th>Last run (this session)</th><td>
+      {{if .Data.Backup.HasLast}}
+        {{fmtTime .Data.Backup.LastWhen}} -
+        {{if .Data.Backup.LastOK}}<span class="text-success">ok</span>{{else}}<span class="text-danger">failed</span>{{end}}
+        <div class="mono">{{.Data.Backup.LastSummary}}</div>
+      {{else}}<span class="text-body-secondary">No run yet this session</span>{{end}}
+    </td></tr>
+  </tbody>
+</table>
+
+{{if .IsAdmin}}
+<div class="card mb-3">
+  <div class="card-header">Schedule and filename</div>
+  <div class="card-body">
+    <p class="text-body-secondary">Turn the daily backup on and choose its local run time, plus how each
+       archive is named: a base name, a date format, and whether the date goes before
+       (prefix) or after (suffix) the base. Every archive ends in <code>.bk</code>.</p>
+    <form method="post" action="/backup/config">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="bk-enabled" name="enabled" value="1" {{if .Data.Backup.Enabled}}checked{{end}}>
+        <label class="form-check-label" for="bk-enabled">Run a backup every day</label>
+      </div>
+      <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+        <div>
+          <label class="form-label mb-1" for="bk-daily-at">Time (local, 24-hour)</label>
+          <input type="time" id="bk-daily-at" name="daily_at" value="{{.Data.Backup.DailyAt}}" class="form-control w-auto" required>
+        </div>
+        <div>
+          <label class="form-label mb-1" for="bk-base-name">Base filename</label>
+          <input type="text" id="bk-base-name" name="base_name" value="{{.Data.Backup.BaseName}}" placeholder="sopshq-backup" class="form-control w-auto">
+        </div>
+        <div>
+          <label class="form-label mb-1" for="bk-date-format">Date format</label>
+          <select id="bk-date-format" name="date_format" class="form-select w-auto">
+            {{range .Data.Backup.DateFormats}}
+            <option value="{{.Layout}}" {{if .Selected}}selected{{end}}>{{.Layout}} (e.g. {{.Example}})</option>
+            {{end}}
+          </select>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-3 mb-3">
+        <div class="form-check">
+          <input class="form-check-input" type="radio" id="bk-datepos-prefix" name="date_position" value="prefix" {{if eq .Data.Backup.DatePosition "prefix"}}checked{{end}}>
+          <label class="form-check-label" for="bk-datepos-prefix">Date as prefix (date first)</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" id="bk-datepos-suffix" name="date_position" value="suffix" {{if eq .Data.Backup.DatePosition "suffix"}}checked{{end}}>
+          <label class="form-check-label" for="bk-datepos-suffix">Date as suffix (date last)</label>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-2 my-3 align-items-center"><button type="submit" class="btn btn-primary">Save schedule and filename</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Destinations</div>
+  <div class="card-body">
+    <p class="text-body-secondary">Where each backup is sent. Destinations are specific to this machine.
+       FTP passwords and Telegram bot tokens are sealed with the vault and are never shown.</p>
+    {{if .Data.Backup.Destinations}}
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Type</th><th>Destination</th><th class="no-sort"></th></tr></thead>
+      <tbody>
+        {{range .Data.Backup.Destinations}}
+        <tr>
+          <td>{{.Type}}</td>
+          <td class="mono">{{.Label}}</td>
+          <td class="text-end">
+            <form method="post" action="/backup/destinations/remove" class="d-inline confirm" data-confirm="Remove this backup destination?">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="index" value="{{.Index}}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="text-body-secondary">No destinations configured.</p>
+    {{end}}
+
+    <form method="post" action="/backup/destinations/add" class="d-flex flex-wrap gap-2 align-items-end mb-3" id="backup-dest-add">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <select name="type" id="backup-dest-type" aria-label="Destination type" class="form-select w-auto">
+        <option value="local">local folder</option>
+        <option value="ftp">FTP / FTPS</option>
+        <option value="telegram">Telegram</option>
+      </select>
+      <span class="dst dst-local">
+        <input type="text" id="bk-dest-folder" name="folder" aria-label="Backup folder" placeholder="folder (blank = data dir)" class="form-control w-auto">
+      </span>
+      <span class="dst dst-ftp hidden">
+        <input type="text" id="bk-ftp-host" name="host" aria-label="FTP host" placeholder="FTP host" class="form-control w-auto">
+        <input type="number" id="bk-ftp-port" name="port" aria-label="FTP port" placeholder="port (blank = 21)" min="0" max="65535" class="form-control w-auto">
+        <input type="text" id="bk-ftp-user" name="ftp_user" placeholder="FTP login name" aria-label="FTP login name" autocomplete="off" class="form-control w-auto">
+        <input type="text" id="bk-ftp-secret" name="ftp_secret" placeholder="FTP login secret" aria-label="FTP login secret" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore class="form-control w-auto secret-field">
+        <input type="text" id="bk-ftp-path" name="path" aria-label="Remote path" placeholder="remote path" class="form-control w-auto">
+        <span class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="bk-ftps" name="ftps" value="1">
+          <label class="form-check-label" for="bk-ftps">FTPS (AUTH TLS)</label>
+        </span>
+      </span>
+      <span class="dst dst-telegram hidden">
+        <input type="text" id="bk-tg-bot-token" name="bot_token" placeholder="bot token" aria-label="Telegram bot token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore class="form-control w-auto secret-field">
+        <input type="text" id="bk-tg-chat-id" name="chat_id" placeholder="chat id" aria-label="Telegram chat id" class="form-control w-auto">
+      </span>
+      <button type="submit" class="btn btn-primary">Add destination</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Password and manual backup</div>
+  <div class="card-body">
+    <div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+      <form method="post" action="/backup/password" class="d-inline">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="text" id="bk-secret" name="backup_secret" placeholder="New backup secret (8+ chars)" aria-label="New backup secret" minlength="8" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore class="form-control w-auto secret-field" required>
+        <button type="submit" class="btn btn-outline-secondary">Set backup password</button>
+      </form>
+      {{if .Data.Backup.Available}}
+      <form method="post" action="/backup/now" class="d-inline confirm" data-confirm="Build a sealed backup now and send it to every configured destination?">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="btn btn-primary">Back up now</button>
+      </form>
+      {{end}}
+    </div>
+    <p class="text-body-secondary">Setting the backup password replaces any previous one. The password is
+       sealed with the vault and never shown again; only its vault-sealed copy is stored.</p>
+  </div>
+</div>
+{{else}}
+<p class="text-body-secondary">Backup controls are available to administrators.</p>
+{{end}}
+
+<h2 class="h4 mt-4 mb-2">Audit retention</h2>
+<p class="text-body-secondary">Keep the audit log from growing without bound. Once a day SopsHQ removes
+   entries older than the number of days you choose. With <strong>export then purge</strong>
+   it first writes the entries it is about to remove to a timestamped archive file under the
+   data directory's <code>audit-archive</code> folder, then deletes them; with <strong>purge</strong>
+   it deletes them outright. Set days to <strong>0</strong> to keep the log forever (no automatic
+   removal). This is a per-machine policy, stored in <code>config.jsonc</code>.</p>
+
+{{if .IsAdmin}}
+<div class="card mb-3">
+  <div class="card-header">Retention policy</div>
+  <div class="card-body">
+    <form method="post" action="/settings/retention">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="d-flex flex-wrap gap-2 align-items-end mb-2">
+        <div>
+          <label class="form-label mb-1" for="ret-days">Days to keep</label>
+          <input type="number" id="ret-days" name="days_to_keep" min="0" value="{{.Data.Retention.DaysToKeep}}" class="form-control w-auto" required>
+          <div class="form-text">0 = keep forever (no automatic removal).</div>
+        </div>
+        <div>
+          <label class="form-label mb-1" for="ret-action">When over the limit</label>
+          <select name="action" id="ret-action" class="form-select w-auto">
+            <option value="export_then_purge" {{if eq .Data.Retention.Action "export_then_purge"}}selected{{end}}>Export then purge (safer)</option>
+            <option value="purge" {{if eq .Data.Retention.Action "purge"}}selected{{end}}>Purge (delete outright)</option>
+          </select>
+        </div>
+      </div>
+      <div class="d-flex flex-wrap gap-2 my-3 align-items-center"><button type="submit" class="btn btn-primary">Save retention policy</button></div>
+    </form>
+  </div>
+</div>
+{{else}}
+<p class="text-body-secondary">Audit retention controls are available to administrators.</p>
+{{end}}
+
+<h2 class="h4 mt-4 mb-2">Notifications</h2>
+<p class="text-body-secondary">Send a short message to a <strong>Telegram</strong> and/or <strong>Slack</strong>
+   channel when chosen events happen in SopsHQ - applies, drift, failed logins, backups,
+   and more. A notification carries only the event <strong>name and outcome</strong>
+   (and names/UUIDs), <strong>never a secret value</strong>. The Telegram bot token and the
+   Slack webhook URL are sealed with the vault and are never shown.</p>
+
+{{if .IsAdmin}}
+<div class="card mb-3">
+  <div class="card-header">General and events</div>
+  <div class="card-body">
+    <p class="text-body-secondary">Turn notifications on, pick which channels receive them, and choose which
+       events notify. The Telegram chat id below is not a secret; the token is set separately.</p>
+    <form method="post" action="/notifications/config">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="nf-enabled" name="enabled" value="1" {{if .Data.Notify.Enabled}}checked{{end}}>
+        <label class="form-check-label" for="nf-enabled">Enable notifications</label>
+      </div>
+      <div class="d-flex flex-wrap gap-3 align-items-end mb-3">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="nf-telegram" name="telegram_enabled" value="1" {{if .Data.Notify.TelegramEnabled}}checked{{end}}>
+          <label class="form-check-label" for="nf-telegram">Send to Telegram</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="nf-slack" name="slack_enabled" value="1" {{if .Data.Notify.SlackEnabled}}checked{{end}}>
+          <label class="form-check-label" for="nf-slack">Send to Slack</label>
+        </div>
+        <div>
+          <label class="form-label mb-1" for="nf-chat-id">Telegram chat id</label>
+          <input type="text" id="nf-chat-id" name="chat_id" value="{{.Data.Notify.TelegramChatID}}" placeholder="chat id" class="form-control w-auto">
+        </div>
+      </div>
+      <p class="text-body-secondary">Events to notify on:</p>
+      <div class="d-flex flex-wrap gap-3 mb-3">
+        {{range .Data.Notify.Events}}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="nf-event-{{.Key}}" name="event_{{.Key}}" value="1" {{if .On}}checked{{end}}>
+          <label class="form-check-label" for="nf-event-{{.Key}}">{{.Label}}</label>
+        </div>
+        {{end}}
+      </div>
+      <div class="d-flex flex-wrap gap-2 my-3 align-items-center"><button type="submit" class="btn btn-primary">Save notification settings</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Telegram credential</div>
+  <div class="card-body">
+    <p class="text-body-secondary">The bot token authenticates SopsHQ to the Telegram Bot API. It is sealed
+       with the vault and never shown. Status: {{if .Data.Notify.TelegramTokenSet}}<span class="text-success">Set</span>{{else}}<span class="text-body-secondary">Not set</span>{{end}}.</p>
+    <div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+      <form method="post" action="/notifications/telegram" class="d-inline">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="text" id="nf-tg-token" name="token" placeholder="Telegram bot token" aria-label="Telegram bot token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore class="form-control w-auto secret-field" required>
+        <button type="submit" class="btn btn-outline-secondary">Set Telegram bot token</button>
+      </form>
+      {{if .Data.Notify.Available}}
+      <form method="post" action="/notifications/test" class="d-inline">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="channel" value="telegram">
+        <button type="submit" class="btn btn-primary">Send test</button>
+      </form>
+      {{end}}
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Slack credential</div>
+  <div class="card-body">
+    <p class="text-body-secondary">The incoming-webhook URL is the Slack destination. Anyone holding it can post
+       to the channel, so it is a secret: it is sealed with the vault and never shown. Status:
+       {{if .Data.Notify.SlackWebhookSet}}<span class="text-success">Set</span>{{else}}<span class="text-body-secondary">Not set</span>{{end}}.</p>
+    <div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+      <form method="post" action="/notifications/slack" class="d-inline">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="text" id="nf-slack-webhook" name="webhook" placeholder="Slack incoming-webhook URL" aria-label="Slack incoming-webhook URL" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore class="form-control w-auto secret-field" required>
+        <button type="submit" class="btn btn-outline-secondary">Set Slack webhook</button>
+      </form>
+      {{if .Data.Notify.Available}}
+      <form method="post" action="/notifications/test" class="d-inline">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="channel" value="slack">
+        <button type="submit" class="btn btn-primary">Send test</button>
+      </form>
+      {{end}}
+    </div>
+  </div>
+</div>
+{{else}}
+<p class="text-body-secondary">Notification controls are available to administrators.</p>
+{{end}}
+{{end}}

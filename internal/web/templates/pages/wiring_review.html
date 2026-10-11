@@ -1,0 +1,103 @@
+{{define "content"}}
+{{$d := .Data}}
+{{$i := $d.Insp}}
+<p><a href="/projects/{{$i.ProjectID}}">&larr; Back to project</a></p>
+<h1 class="h3 mb-2">Review wiring: {{$i.ProjectName}}</h1>
+
+<div class="alert alert-warning py-2">This machine (or project) already has SOPS/age state that wiring
+   would otherwise overwrite. SopsHQ will <strong>not</strong> change anything until
+   you choose, per item, whether to <strong>reuse</strong> what is there (adopt it,
+   nothing on disk changes) or <strong>re-create</strong> it (replace it).</div>
+<p class="text-body-secondary">Re-create is destructive: replacing a key generates a brand-new
+   keypair, which can leave existing secrets that were encrypted only to the old
+   key <strong>undecryptable</strong>. When in doubt, choose Reuse.</p>
+
+<form method="post" action="/projects/{{$i.ProjectID}}/wire/resolve">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+  <table class="table table-sm align-middle">
+    <thead><tr><th>What exists</th><th>Where</th><th>Choice</th></tr></thead>
+    <tbody>
+
+    {{if $i.Disk.KeysTxtExists}}
+      <tr>
+        <td>An age private key (<code>keys.txt</code>){{if $i.Disk.KeysTxtRecipient}}<br><span class="text-body-secondary mono small">public key {{$i.Disk.KeysTxtRecipient}}</span>{{end}}</td>
+        <td class="mono">{{$i.Disk.KeysTxtPath}}</td>
+        <td>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" id="wr-key-disk-reuse" name="key" value="reuse" checked>
+            <label class="form-check-label" for="wr-key-disk-reuse">Reuse (adopt this key; file unchanged)</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" id="wr-key-disk-recreate" name="key" value="recreate">
+            <label class="form-check-label" for="wr-key-disk-recreate">Re-create (new keypair; may orphan secrets)</label>
+          </div>
+        </td>
+      </tr>
+    {{else if $i.RecordExists}}
+      <tr>
+        <td>A SopsHQ key already assigned: <strong>{{$i.RecordKeyName}}</strong>{{if $i.RecordRecipient}}<br><span class="text-body-secondary mono small">public key {{$i.RecordRecipient}}</span>{{end}}</td>
+        <td>in this panel's custody</td>
+        <td>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" id="wr-key-rec-reuse" name="key" value="reuse" checked>
+            <label class="form-check-label" for="wr-key-rec-reuse">Reuse (keep this key)</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" id="wr-key-rec-recreate" name="key" value="recreate">
+            <label class="form-check-label" for="wr-key-rec-recreate">Re-create (new keypair; may orphan secrets)</label>
+          </div>
+        </td>
+      </tr>
+    {{end}}
+
+    {{if $i.Disk.EnvPointsElsewhere}}
+      <tr>
+        <td><code>SOPS_AGE_KEY_FILE</code> is already set, pointing elsewhere</td>
+        <td class="mono">{{$i.Disk.EnvKeyFile}}</td>
+        <td>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" id="wr-env-reuse" name="env_key_file" value="reuse" checked>
+            <label class="form-check-label" for="wr-env-reuse">Reuse (leave it pointing where it is)</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" id="wr-env-recreate" name="env_key_file" value="recreate">
+            <label class="form-check-label" for="wr-env-recreate">Re-point it at this project's key</label>
+          </div>
+        </td>
+      </tr>
+    {{end}}
+
+    {{if $i.Disk.SopsYAMLExists}}
+      <tr>
+        <td>A project <code>.sops.yaml</code>{{if $i.Disk.SopsYAMLManaged}} <span class="badge text-bg-secondary">SopsHQ-managed</span>{{else}} <span class="badge text-bg-secondary">hand-authored</span>{{end}}</td>
+        <td class="mono">{{$i.Disk.SopsYAMLPath}}</td>
+        <td>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" id="wr-sops-reuse" name="sops_yaml" value="reuse" checked>
+            <label class="form-check-label" for="wr-sops-reuse">Reuse (keep it as is) - recommended</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" id="wr-sops-recreate" name="sops_yaml" value="recreate">
+            <label class="form-check-label" for="wr-sops-recreate">Re-create (rewrite it in SopsHQ's format)</label>
+          </div>
+          <div class="form-text text-warning-emphasis mt-1">
+            Re-create rewrites who can read this project. When you are <strong>reusing</strong> the key,
+            SopsHQ keeps every reader already listed in this <code>.sops.yaml</code> and simply adds this
+            project's key - so no key that can currently open the secrets is dropped. Only when you also
+            <strong>re-create the key</strong> is the reader set replaced, which can leave secrets that were
+            encrypted only to the old key unreadable. When unsure, choose Reuse.
+          </div>
+        </td>
+      </tr>
+    {{end}}
+
+    </tbody>
+  </table>
+
+  <div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+    <button type="submit" class="btn btn-primary">Apply my choices</button>
+    <a href="/projects/{{$i.ProjectID}}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+{{end}}

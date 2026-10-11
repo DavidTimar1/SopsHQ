@@ -1,0 +1,66 @@
+{{define "content"}}
+{{$d := .Data}}
+{{$p := $d.Plan}}
+<p><a href="/projects/{{$p.ProjectID}}">&larr; Back to project</a></p>
+<h1 class="h3 mb-2">Move project folder: {{$p.ProjectName}}</h1>
+
+<div class="alert alert-warning py-2">
+  You are changing this project's folder on <strong>{{if $d.MachineName}}{{$d.MachineName}}{{else}}this machine{{end}}</strong>.
+  SopsHQ will <strong>move</strong> the files it manages to the new folder and remove them
+  from the old one, so nothing is left behind. Review the plan, then confirm. Nothing
+  moves until you do.
+</div>
+
+<table class="table table-sm align-middle">
+  <tbody>
+    <tr><th class="text-nowrap">From (old)</th><td class="mono">{{$p.OldPath}}</td></tr>
+    <tr><th class="text-nowrap">To (new)</th><td class="mono">{{$p.NewPath}}</td></tr>
+  </tbody>
+</table>
+
+{{if or $p.DestConflict $p.DestSecretsConflict}}
+<div class="alert alert-danger py-2">
+  The new folder already has a different managed file, and SopsHQ will not overwrite it:
+  <ul class="mb-0 mt-1">
+    {{if $p.DestConflict}}<li>a different <code>.sops.yaml</code> (<span class="mono">{{$p.DestConflict}}</span>)</li>{{end}}
+    {{if $p.DestSecretsConflict}}<li>a different <code>{{$p.SecretsName}}</code> (<span class="mono">{{$p.DestSecretsConflict}}</span>) - moving would destroy its encrypted data</li>{{end}}
+  </ul>
+  Move or remove that file yourself (or resolve it from the <a href="/drift">Drift</a>
+  page) first, then change the folder.
+</div>
+{{else}}
+
+<h2 class="h5 mt-4 mb-2">What will happen</h2>
+<ul>
+  {{if $p.MoveSops}}
+    <li>The managed secrets config (<code>.sops.yaml</code>) will move from the old
+        folder to the new folder, then be removed from the old folder.</li>
+  {{end}}
+  {{if $p.MoveSecrets}}
+    <li>The project's tracked secrets file (<code>{{$p.SecretsName}}</code>) will move
+        from the old folder to the new folder, then be removed from the old folder.</li>
+  {{end}}
+  {{if $p.HandAuthored}}
+    <li>A <strong>hand-authored</strong> <code>.sops.yaml</code> is in the old folder.
+        SopsHQ did not create it, so it will be <strong>left exactly where it is</strong>
+        (never moved or deleted). If you meant to move it, move it yourself.</li>
+  {{end}}
+  {{if not $p.Moves}}
+    <li>The old folder holds no SopsHQ-managed files, so nothing is moved - only the
+        recorded folder is updated to the new location.</li>
+  {{end}}
+  <li>The project will point at the new folder.</li>
+</ul>
+
+<form method="post" action="/projects/{{$p.ProjectID}}/paths">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="machine_id" value="{{$d.MachineID}}">
+  <input type="hidden" name="path" value="{{$p.NewPath}}">
+  <input type="hidden" name="confirm_move" value="1">
+  <div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+    <button type="submit" class="btn btn-primary">Move and update the folder</button>
+    <a href="/projects/{{$p.ProjectID}}" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+{{end}}
+{{end}}

@@ -1,0 +1,244 @@
+{{define "content"}}
+{{$d := .Data}}
+<p><a href="/projects">&larr; Projects</a></p>
+<h1 class="h3 mb-2">Project: {{$d.Project.Name}}</h1>
+{{if $d.Project.Note}}<p class="text-body-secondary">{{$d.Project.Note}}</p>{{end}}
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About this project page (secrets, paths, assignments &amp; security)</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <h6 class="mt-2 mb-1">The three sections</h6>
+    <ul>
+      <li><strong>Folder paths</strong> - where this project's folder lives on each
+          machine. SopsHQ writes <code>.sops.yaml</code> into the local path on Apply.</li>
+      <li><strong>Key assignments</strong> - which key is granted to which OS user on
+          which machine; this drives both the list of public keys and key placement.</li>
+      <li><strong>Secrets</strong> - the name/value pairs encrypted into this project's
+          <code>secrets.yaml</code>. Values are hidden; click <strong>Show</strong> to
+          reveal one. SopsHQ keeps NO copy of a value - it encrypts straight into the
+          file and forgets it.</li>
+    </ul>
+    <h6 class="mt-2 mb-1">Order of operations</h6>
+    <p>Set a folder path -&gt; wire or assign a key -&gt; Apply (writes
+       <code>.sops.yaml</code> and places the key) -&gt; add and edit secrets.</p>
+    <div class="mt-2">
+      <h6 class="mt-2 mb-1">Security note</h6>
+      <p>Revealing or editing a secret decrypts it on this machine and sends it to your
+         browser over the encrypted connection only - it is never written to a log, an
+         audit row, or a URL. The reveal action itself is audited by secret NAME only.
+         A value never leaves this machine and is never replicated to other machines.</p>
+    </div>
+  </div>
+</details>
+
+{{if $d.LocalFolderMissing}}
+<div class="alert alert-warning">
+  <strong>This project's folder no longer exists on this machine.</strong>
+  The configured path <span class="mono">{{$d.LocalFolderPath}}</span> was moved or deleted.
+  Update the path below (or remove it) so Apply targets the right folder.
+</div>
+{{end}}
+
+<h2 class="h4 mt-4 mb-2">Folder paths (per machine)</h2>
+<p class="text-body-secondary">Where this project's folder lives on each machine. SopsHQ writes
+   <code>.sops.yaml</code> into the local machine's path when you Apply.</p>
+<form method="post" action="/projects/{{$d.Project.M.UUID}}/paths" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <select name="machine_id" id="proj-path-machine" aria-label="Machine" class="form-select w-auto" required>
+    <option value="">machine...</option>
+    {{range $d.Machines}}<option value="{{.M.UUID}}" data-local="{{if eq .M.UUID $d.LocalID}}1{{end}}">{{.Name}} ({{.OS}})</option>{{end}}
+  </select>
+  <div class="input-group w-auto">
+    <input type="text" name="path" id="proj-path-input" aria-label="Folder path on that machine" placeholder="absolute folder path" class="form-control" required>
+    <button type="button" class="btn btn-outline-secondary browse" data-target="proj-path-input" data-machine="proj-path-machine" title="Browse folders on this machine">Browse</button>
+  </div>
+  <button type="submit" class="btn btn-primary">Set path</button>
+</form>
+<table class="table table-sm align-middle">
+  <thead><tr><th>Machine</th><th>Path</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Project.Paths}}
+    <tr>
+      <td>{{with index $d.MachineName .MachineID}}{{.}}{{else}}<span class="text-danger" title="No machine record matches this id - the machine may have been removed or replaced">{{.MachineID}}</span>{{end}}{{if eq .MachineID $d.LocalID}} <span class="badge text-bg-secondary">local</span>{{end}}</td>
+      <td class="mono">{{.Path}}{{if and (eq .MachineID $d.LocalID) $d.LocalFolderMissing}} <span class="badge text-bg-warning">missing on disk</span>{{end}}</td>
+      <td class="text-end">
+        <form method="post" action="/projects/{{$d.Project.M.UUID}}/paths/delete" class="d-inline confirm" data-confirm="Remove this path?">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <input type="hidden" name="machine_id" value="{{.MachineID}}">
+          <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+        </form>
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="3" class="text-body-secondary text-center">No paths yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+
+<h2 class="h4 mt-4 mb-2">Key assignments</h2>
+<p class="text-body-secondary">Each assignment grants a key to an OS user on a machine, and lists
+   that key's public key in this project's <code>.sops.yaml</code>.</p>
+<form method="post" action="/assignments" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="project_id" value="{{$d.Project.M.UUID}}">
+  <select id="proj-assign-key" name="key_id" aria-label="Key" class="form-select w-auto" required>
+    <option value="">key...</option>
+    {{range $d.Keys}}<option value="{{.M.UUID}}">{{.Name}} ({{.Type}}){{if not .Recipient}} - not generated{{end}}</option>{{end}}
+  </select>
+  <select id="proj-assign-machine" name="machine_id" aria-label="Machine" class="form-select w-auto" required>
+    <option value="">machine...</option>
+    {{range $d.Machines}}<option value="{{.M.UUID}}">{{.Name}}</option>{{end}}
+  </select>
+  <select id="proj-assign-osuser" name="os_user_id" aria-label="OS user" class="form-select w-auto" required>
+    <option value="">OS user...</option>
+    {{range $d.OSUsers}}<option value="{{.M.UUID}}">{{.Username}} ({{index $d.MachineName .MachineID}})</option>{{end}}
+  </select>
+  <button type="submit" class="btn btn-primary">Assign</button>
+</form>
+<table class="table table-sm align-middle">
+  <thead><tr><th>Key</th><th>Machine</th><th>OS user</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Assignments}}
+    <tr>
+      <td>{{.KeyName}}</td><td>{{.MachineName}}</td><td>{{.UserName}}</td>
+      <td class="text-end">
+        <form method="post" action="/assignments/{{.M.UUID}}/delete" class="d-inline confirm" data-confirm="Remove this assignment?">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+        </form>
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="4" class="text-body-secondary text-center">No assignments yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+
+<h2 class="h4 mt-4 mb-2">Secrets</h2>
+<p class="text-body-secondary">Name/value pairs encrypted into this project's
+   <code>secrets.yaml</code> on the local machine. SopsHQ encrypts each value
+   straight into that file and keeps no copy - only the NAMES are shown here.</p>
+{{if not $d.HasLocalMachine}}
+  <div class="alert alert-warning py-2">Designate this machine first
+     (<a href="/machines">Machines -&gt; this machine</a>) to edit secrets here.</div>
+{{else if not $d.HasLocalPath}}
+  <div class="alert alert-warning py-2">Set this project's folder path on the local machine (above)
+     before adding secrets.</div>
+{{else if not $d.HasLocalOSUser}}
+  <div class="alert alert-warning py-2">There is no OS user on this machine yet. The OS user owns the
+     keystore that will hold this project's private key, so SopsHQ does not create one
+     for you. Add an OS user first (<a href="/osusers">OS users -&gt; Add</a>), then wire
+     this project.</div>
+{{else if not $d.WiredLocally}}
+  {{if $d.ImportOnDisk}}
+  <div class="alert alert-info py-2">This project's folder already has a SOPS setup on this machine (a
+     <code>.sops.yaml</code> and/or an on-disk key). SopsHQ can <strong>import</strong> it instead of
+     generating a new key: importing adopts the existing key into the vault and keeps your
+     <code>.sops.yaml</code> as it is - nothing on disk is overwritten. You will get a short review screen
+     first to confirm what is reused.</div>
+  <form method="post" action="/projects/{{$d.Project.M.UUID}}/wire" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="btn btn-primary">Import the existing setup</button>
+  </form>
+  {{else}}
+  <div class="alert alert-warning py-2">This project has no key on this machine yet. Wire it once and
+     SopsHQ will generate a shared key, place it, and create
+     <code>.sops.yaml</code> so you can add secrets.</div>
+  <form method="post" action="/projects/{{$d.Project.M.UUID}}/wire" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="btn btn-primary">Wire this project</button>
+  </form>
+  {{end}}
+{{else if not $d.AppliedLocally}}
+  <div class="alert alert-warning py-2">This project has a key assigned, but its <code>.sops.yaml</code>
+     has not been written to the folder yet, so secrets cannot be encrypted. Apply to
+     place the key and write <code>.sops.yaml</code>, then add secrets here.</div>
+  <form method="post" action="/apply" class="d-flex flex-wrap gap-2 align-items-end mb-3 confirm"
+        data-confirm="Apply to this machine: place assigned keys and write each local project's .sops.yaml?">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="back" value="/projects/{{$d.Project.M.UUID}}">
+    <button type="submit" class="btn btn-primary">Apply (write .sops.yaml)</button>
+  </form>
+{{else}}
+  {{if $d.SopsMismatch}}
+  <div class="alert alert-warning py-2">
+    <strong>The secrets config on disk uses different public keys than this project.</strong>
+    {{$d.SopsMismatchDetail}}. The recommended fix is <strong>Match to the on-disk keys</strong>:
+    it points this project at the public keys the config already uses - no reader currently able
+    to decrypt is dropped and the secrets are not re-keyed.
+    {{if $d.SopsMismatchDrop}}<div class="mt-1">It will REMOVE these keys you added but have not
+       applied: <strong>{{range $i, $e := $d.SopsMismatchDrop}}{{if $i}}, {{end}}{{$e}}{{end}}</strong>
+       (they protect nothing on disk, so no one loses access).</div>{{end}}
+    <form method="post" action="/drift/resolve" class="mt-2 confirm"
+          data-confirm="Set this project to the public keys the secrets config already uses on disk. No reader currently able to decrypt is dropped and nothing is re-keyed.{{if $d.SopsMismatchDrop}} These keys you added but have not applied will be REMOVED from the project: {{range $i, $e := $d.SopsMismatchDrop}}{{if $i}}, {{end}}{{$e}}{{end}}. Continue?{{end}}">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="project_id" value="{{$d.Project.M.UUID}}">
+      <button type="submit" name="action" value="match-disk" class="btn btn-sm btn-primary">Match to the on-disk keys</button>
+      <a href="/drift" class="btn btn-sm btn-outline-secondary">See all drift options</a>
+    </form>
+  </div>
+  {{end}}
+  {{if $d.SecretErr}}<div class="alert alert-warning py-2">{{$d.SecretErr}}</div>{{end}}
+  <form method="post" action="/projects/{{$d.Project.M.UUID}}/secrets" class="d-flex flex-wrap gap-2 align-items-start mb-3">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{with $d.Edit}}<input type="hidden" name="orig_name" value="{{.Name}}">{{end}}
+    <input type="text" id="proj-secret-name" name="name" aria-label="Secret name" placeholder="SECRET_NAME" required
+           pattern="[A-Za-z0-9_.\-]+" title="letters, digits, _ - ."
+           value="{{with $d.Edit}}{{.Name}}{{end}}" class="form-control w-auto">
+    <textarea id="proj-secret-value" name="value" rows="2" placeholder="value" aria-label="Secret value" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore class="form-control flex-grow-1 secret-field">{{with $d.Edit}}{{.Value}}{{end}}</textarea>
+    <button type="submit" class="btn btn-primary">{{if $d.Edit}}Update{{else}}Add{{end}} secret</button>
+    {{with $d.Edit}}{{if .Elsewhere}}
+    <div class="w-100 mt-2">
+      <div class="alert alert-warning py-2">This exact secret (same name &amp; value) is also used in
+         {{len .Elsewhere}} other place(s):
+         {{range $i, $o := .Elsewhere}}{{if $i}}, {{end}}<strong>{{$o.Label}}</strong>{{if eq $o.Kind "global"}} (global){{end}}{{end}}.</div>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="propagate-all" name="propagate" value="all">
+        <label class="form-check-label" for="propagate-all">Update those too (apply this rename/new value everywhere it matches)</label>
+      </div>
+    </div>
+    {{end}}{{end}}
+  </form>
+  {{if $.IsAdmin}}
+  <details class="mb-3 reuse-picker">
+    <summary class="text-primary small" style="cursor:pointer">Reuse an existing secret</summary>
+    <div class="small text-body-secondary mt-2 ps-2 border-start">
+      <p class="text-body-secondary">Pick secrets already used in any project SopsHQ can read on this
+         machine and add them here in one click - no re-typing. Values stay hidden; each
+         picked value is decrypted and copied straight into this project when you add it.
+         Names that already exist here are skipped.</p>
+      <form method="post" action="/projects/{{$d.Project.M.UUID}}/secrets/bulk-add">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <div class="reuse-rows" data-loading="1">Loading the catalog...</div>
+        <button type="submit" class="btn btn-primary reuse-add">Add selected</button>
+      </form>
+    </div>
+  </details>
+  {{end}}
+  <table class="table table-sm align-middle">
+    <thead><tr><th>Name</th><th>Value</th><th></th></tr></thead>
+    <tbody>
+    {{range $d.SecretNames}}
+      <tr>
+        <td class="mono">{{.}}</td>
+        <td class="secret-val"><span class="masked">**********</span><span class="shown hidden"></span></td>
+        <td class="text-end">
+          <button type="button" class="btn btn-sm btn-outline-secondary secret-toggle secret-show" data-project="{{$d.Project.M.UUID}}" data-name="{{.}}">Show</button>
+          <form method="post" action="/projects/{{$d.Project.M.UUID}}/secrets/edit" class="d-inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="name" value="{{.}}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Edit</button>
+          </form>
+          <form method="post" action="/projects/{{$d.Project.M.UUID}}/secrets/delete" class="d-inline confirm" data-confirm="Delete secret {{.}}?">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="name" value="{{.}}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {{else}}
+      <tr><td colspan="3" class="text-body-secondary text-center">No secrets yet.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+{{end}}
+{{end}}

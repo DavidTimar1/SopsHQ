@@ -1,0 +1,165 @@
+{{define "content"}}
+<h1 class="h3 mb-2">Terminology and how it works</h1>
+<p class="text-body-secondary">Plain-language names for everything in SopsHQ, the two-gates rule for
+   reading a secret, and a picture of how the pieces connect.</p>
+
+<h2 class="h4 mt-4 mb-2">The two gates</h2>
+<p>To READ a secret, an OS account needs BOTH of these at the same time:</p>
+<div class="row g-3 mb-2">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h3 class="h6 card-title">Gate 1 - the key</h3>
+        <p class="card-text small mb-0">A private key that can open the secret, stored in the account's own
+           keystore and readable only by that account. SopsHQ always sets this up.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h3 class="h6 card-title">Gate 2 - the file</h3>
+        <p class="card-text small mb-0">Permission to read the encrypted secrets file on disk. In a project
+           folder this is ONE shared file, so other accounts must be able to read that folder (SopsHQ only
+           warns). A secret set gives each account its own private copy, so no shared-folder permission is
+           needed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="small text-body-secondary">Rule of thumb: same folder and same owner -&gt; use a project folder; a
+   separate or service account that should not live in that folder -&gt; use a secret set.</p>
+
+<h2 class="h4 mt-4 mb-2">How the pieces connect</h2>
+<p class="small text-body-secondary">OS accounts hold private keys in their keystores. Each private key has a
+   matching public key. A public key is used to encrypt a secret into the secrets file; the matching private
+   key later opens it.</p>
+<div class="border rounded p-2 mb-3 bg-body-tertiary overflow-auto">
+  <svg viewBox="0 0 760 260" width="100%" style="min-width:640px; width:100%; max-width:760px" role="img"
+       aria-label="OS accounts hold private keys in keystores; each private key has a matching public key; public keys encrypt secrets into secrets.yaml">
+    <defs>
+      <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 z" fill="currentColor"></path>
+      </marker>
+    </defs>
+    <g fill="none" stroke="currentColor" stroke-width="1.5">
+      <!-- column 1: OS accounts -->
+      <rect x="10" y="40" width="150" height="60" rx="6"></rect>
+      <rect x="10" y="150" width="150" height="60" rx="6"></rect>
+      <!-- column 2: private keys in keystores -->
+      <rect x="210" y="40" width="170" height="60" rx="6"></rect>
+      <rect x="210" y="150" width="170" height="60" rx="6"></rect>
+      <!-- column 3: public keys -->
+      <rect x="430" y="40" width="150" height="60" rx="6"></rect>
+      <rect x="430" y="150" width="150" height="60" rx="6"></rect>
+      <!-- column 4: secrets file -->
+      <rect x="620" y="95" width="130" height="70" rx="6"></rect>
+      <!-- account -> private key -->
+      <line x1="160" y1="70" x2="210" y2="70" marker-end="url(#arrow)"></line>
+      <line x1="160" y1="180" x2="210" y2="180" marker-end="url(#arrow)"></line>
+      <!-- private key <-> public key (a matched pair) -->
+      <line x1="380" y1="70" x2="430" y2="70" marker-end="url(#arrow)"></line>
+      <line x1="380" y1="180" x2="430" y2="180" marker-end="url(#arrow)"></line>
+      <!-- public key -> encrypts into secrets file -->
+      <path d="M580 70 C 610 70, 610 120, 620 120" marker-end="url(#arrow)"></path>
+      <path d="M580 180 C 610 180, 610 140, 620 140" marker-end="url(#arrow)"></path>
+    </g>
+    <g fill="currentColor" font-size="12" font-family="sans-serif" text-anchor="middle">
+      <text x="85" y="20">OS accounts</text>
+      <text x="85" y="66">alice</text>
+      <text x="85" y="82">(human login)</text>
+      <text x="85" y="176">mailsvc</text>
+      <text x="85" y="192">(service acct)</text>
+      <text x="295" y="20">Private keys (keystores)</text>
+      <text x="295" y="66">keys.txt</text>
+      <text x="295" y="82">owner-only</text>
+      <text x="295" y="176">keys.txt</text>
+      <text x="295" y="192">owner-only</text>
+      <text x="505" y="20">Public keys</text>
+      <text x="505" y="74">age1...</text>
+      <text x="505" y="184">age1...</text>
+      <text x="685" y="80">Encrypted</text>
+      <text x="685" y="120">secrets.yaml</text>
+      <text x="685" y="150">(ciphertext)</text>
+    </g>
+  </svg>
+</div>
+
+<h2 class="h4 mt-4 mb-2">Core objects</h2>
+<dl class="row">
+  <dt class="col-sm-3">Secret</dt>
+  <dd class="col-sm-9">A name plus a value you want kept out of plaintext. Example: <code>STRIPE_KEY = sk_live_...</code>.</dd>
+  <dt class="col-sm-3">age key pair</dt>
+  <dd class="col-sm-9">A matched pair made by the <code>age</code> tool: a private key and a public key.
+     (technical: age keypair, X25519 - classical, NOT post-quantum.)</dd>
+  <dt class="col-sm-3">Private key</dt>
+  <dd class="col-sm-9">The secret half (<code>keys.txt</code>); it opens (decrypts) secrets. Guard it like an SSH
+     private key. Stored as an owner-only file.</dd>
+  <dt class="col-sm-3">Public key</dt>
+  <dd class="col-sm-9">The non-secret half (<code>age1...</code>); used when encrypting a secret so the matching
+     private key can later open it. Safe to share.</dd>
+  <dt class="col-sm-3">Secrets file</dt>
+  <dd class="col-sm-9">The file that stores the ENCRYPTED secret values (<code>secrets.yaml</code>). Anyone may
+     read the file; only a private key can open the values inside.</dd>
+  <dt class="col-sm-3">Inner key</dt>
+  <dd class="col-sm-9">One random key sops makes per secrets file that scrambles the values. Each public key you
+     add gets its own encrypted copy of this inner key, stored in a small block at the bottom of the file.
+     Adding a public key is a quick re-encrypt of the inner key, not of every value. (technical: sops data
+     key.)</dd>
+  <dt class="col-sm-3">Helper file</dt>
+  <dd class="col-sm-9">OPTIONAL (<code>.sops.yaml</code>). Tells sops which public keys to use when CREATING or
+     updating a secrets file. Ignored when OPENING one. SopsHQ keeps it.</dd>
+</dl>
+
+<h2 class="h4 mt-4 mb-2">Accounts and folders</h2>
+<dl class="row">
+  <dt class="col-sm-3">OS account</dt>
+  <dd class="col-sm-9">A real operating-system account, human or service (e.g. <code>alice</code>, or a no-login
+     daemon like <code>mailsvc</code>), that SopsHQ places a private key for. (technical: OS user.)</dd>
+  <dt class="col-sm-3">Keystore folder</dt>
+  <dd class="col-sm-9">The folder that holds one OS account's private key file. Default:
+     <code>~/.config/sops/age</code> (the sops default location). May be a symlink to a secure drive.
+     (SopsHQ field: <code>KeyBase</code>.) The <code>~/.config/sops/age</code> default only resolves
+     for an account that HAS a home folder. A homeless service or daemon account (home is
+     <code>/nonexistent</code> or missing) has no <code>~</code> to expand, so it needs an EXPLICIT,
+     account-owned keystore path instead (for example <code>/etc/&lt;service&gt;/keys</code>), which
+     SopsHQ creates and makes owner-only; that account's program then points
+     <code>SOPS_AGE_KEY_FILE</code> at the <code>keys.txt</code> inside it.</dd>
+  <dt class="col-sm-3">Key file path</dt>
+  <dd class="col-sm-9">The environment value a program uses to tell sops which private key file to open with
+     (<code>SOPS_AGE_KEY_FILE</code>). If unset, sops uses the default location under that process's home.</dd>
+</dl>
+
+<h2 class="h4 mt-4 mb-2">Groupings</h2>
+<dl class="row">
+  <dt class="col-sm-3">Project</dt>
+  <dd class="col-sm-9">A NAMED grouping with a folder per machine. SopsHQ writes a secrets file into that
+     folder. It is a SopsHQ record that points at a physical folder; it is not the folder itself. Example:
+     project "Webshop" -&gt; <code>~/projects/webshop</code> on the server, <code>D:\code\webshop</code> on the
+     laptop.</dd>
+  <dt class="col-sm-3">Secret set</dt>
+  <dd class="col-sm-9">A group of secrets that does NOT belong to any project folder. Stored per account under
+     its keystore at <code>&lt;keystore&gt;/global/&lt;set&gt;/secrets.yaml</code>. A name groups the secrets
+     plus the OS accounts that may open them. A one-account set is "your own global secrets". (technical:
+     GlobalSet.) EACH account you pick gets its OWN owner-only copy in its OWN keystore - there is no
+     shared folder and no cross-account access. That is exactly why a set sidesteps the Gate 2
+     folder-permission problem: every account reads only its own private copy, so none needs permission
+     to read a folder that belongs to another account.</dd>
+</dl>
+
+<h2 class="h4 mt-4 mb-2">Actions and rules</h2>
+<dl class="row">
+  <dt class="col-sm-3">Apply</dt>
+  <dd class="col-sm-9">The SopsHQ action that makes keys, places private keys into keystore folders
+     (owner-only), writes or updates the secrets file, and writes the helper file.</dd>
+  <dt class="col-sm-3">The two gates</dt>
+  <dd class="col-sm-9">To READ a secret an account needs BOTH a private key that opens it (in its own keystore,
+     readable only by it) AND permission to read the secrets file on disk. In a project folder there is one
+     shared secrets file (other accounts must be able to read that folder; SopsHQ only warns). A secret set
+     gives each account a private copy (no shared-folder permission needed).</dd>
+  <dt class="col-sm-3">Print-commands</dt>
+  <dd class="col-sm-9">SopsHQ never runs as root. Anything needing privilege (create an OS account, set its
+     home, write into another account's folder) is shown to you as exact <code>sudo</code> commands to run;
+     SopsHQ does the rest unprivileged. (technical: Mode A.)</dd>
+</dl>
+{{end}}

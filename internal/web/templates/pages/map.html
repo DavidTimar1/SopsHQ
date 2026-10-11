@@ -1,0 +1,112 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h3 mb-2">Map</h1>
+<p class="text-body-secondary">Drill down a nested folder tree to see how SopsHQ's records relate -
+   which secrets live under which path, on which machine, in which project, and so on. Pick a
+   built-in view, or build your own by ordering the grouping levels. Names and ids only - never a
+   secret value.</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About this page</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <p class="mb-2"><strong>What this page is.</strong> The other pages each show one record type
+       (Keys, Projects, Machines, ...). The Map view shows how those records <em>relate</em>, as an
+       expandable tree. Each <strong>view</strong> is one grouping order: for example
+       <em>Project -&gt; Machine -&gt; Path -&gt; Secret name</em> groups every secret under its path,
+       machine, and project.</p>
+    <p class="mb-2"><strong>Left pane</strong> is the tree: click a folder to expand or collapse it;
+       click a leaf item to load its details on the <strong>right pane</strong>. The detail pane is
+       <strong>read-only</strong> - to change a record, open its own page (a project leaf links to the
+       project page).</p>
+    <p class="mb-2"><strong>Make your own.</strong> Press <strong>+ New view</strong>, name it, tick the
+       grouping levels and order them with the up/down arrows, choose the leaf level, and save. Custom
+       views are stored records, so they survive restarts and sync to the other machine.</p>
+    <p class="mb-0"><strong>Security.</strong> The tree carries <strong>names and ids only</strong> -
+       never a private key, the vault key, a TOTP secret, or a decrypted secret value. A
+       Secret-name node shows the NAME of a secret, never its value.</p>
+  </div>
+</details>
+
+<div id="map-page">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <ul class="nav nav-pills flex-wrap gap-1 mb-0" id="map-views">
+      {{range $d.Views}}
+      <li class="nav-item">
+        <button type="button"
+                class="nav-link map-view-pill{{if eq .ID $d.Active}} active{{end}}"
+                data-view="{{.ID}}"
+                {{if .Custom}}data-custom="1" data-groupby="{{join .GroupBy ","}}" data-leaf="{{.Leaf}}"{{end}}>
+          {{.Name}}
+        </button>
+      </li>
+      {{end}}
+    </ul>
+    {{if .IsAdmin}}
+    <button type="button" class="btn btn-sm btn-outline-primary" id="map-new-view">+ New view</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="map-edit-view">Edit view</button>
+    <form method="post" action="#" id="map-delete-form" class="d-none confirm" data-confirm="Delete this custom view?">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="btn btn-sm btn-outline-danger">Delete view</button>
+    </form>
+    {{end}}
+  </div>
+
+  {{if .IsAdmin}}
+  <div class="card mb-3 d-none" id="map-editor">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span id="map-editor-title">New view</span>
+      <button type="button" class="btn-close" aria-label="Close" id="map-editor-close"></button>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/map/views" id="map-editor-form">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="levels" id="map-levels-input">
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label class="form-label mb-1" for="map-name">View name</label>
+            <input type="text" name="name" id="map-name" class="form-control" placeholder="e.g. By machine" required>
+            <label class="form-label mb-1 mt-3" for="map-leaf">Leaf level (the innermost item)</label>
+            <select name="leaf" id="map-leaf" class="form-select">
+              {{range $d.Attrs}}<option value="{{.Key}}">{{.Label}}</option>{{end}}
+            </select>
+            <p class="form-text">Tick the grouping levels below and order them outermost-first. The leaf
+               level is shown as items rather than folders. An ordering with no relationship between two
+               levels simply skips that level - it never breaks.</p>
+          </div>
+          <div class="col-md-7">
+            <label class="form-label mb-1">Grouping levels (order: outermost first)</label>
+            <ul class="list-group" id="map-level-list">
+              {{range $d.Attrs}}
+              <li class="list-group-item d-flex align-items-center gap-2" data-key="{{.Key}}">
+                <div class="form-check mb-0 flex-grow-1">
+                  <input class="form-check-input lvl-include" type="checkbox" id="lvl-{{.Key}}">
+                  <label class="form-check-label" for="lvl-{{.Key}}">{{.Label}}</label>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary lvl-up" title="Move up" aria-label="Move up">&#8593;</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary lvl-down" title="Move down" aria-label="Move down">&#8595;</button>
+              </li>
+              {{end}}
+            </ul>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary">Save view</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+  {{end}}
+
+  <div class="row g-3">
+    <div class="col-12 col-lg-5">
+      <div class="border rounded p-2 map-tree" id="map-tree" data-active="{{$d.Active}}">
+        <p class="text-body-secondary small m-2">Loading...</p>
+      </div>
+    </div>
+    <div class="col-12 col-lg-7">
+      <div class="border rounded p-3" id="map-detail">
+        <p class="text-body-secondary m-0">Select an item in the tree to see its details here.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}

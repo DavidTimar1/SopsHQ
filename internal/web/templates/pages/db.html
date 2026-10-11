@@ -1,0 +1,173 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h3 mb-2">DB</h1>
+<p class="text-body-secondary">A read-only browse view of every record type, one filterable table
+   per tab. Sort any column, search, and use the per-column dropdown filters to slice large
+   datasets quickly. Names and metadata only - never a secret value.</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About this page</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <p class="mb-2"><strong>What this page is.</strong> A single place to browse all of SopsHQ's
+       records at once - <strong>Keys</strong>, <strong>Projects</strong>, <strong>Machines</strong>,
+       <strong>OS users</strong>, and <strong>Assignments</strong> (plus <strong>Users</strong> and
+       <strong>Secrets</strong> for admins). Each tab is its own sortable, searchable, filterable
+       table. It is <strong>read-only</strong>: to add, edit, or delete a record, use that record's
+       own page.</p>
+    <p class="mb-0"><strong>Security.</strong> Every table shows <strong>names and metadata only</strong> -
+       never a private key, the vault key, a TOTP secret, or a decrypted secret value. The
+       Secrets tab reuses the same value-free catalog as the <a href="/secrets">Secrets</a> page (no
+       value column, no reveal), and it - like the Users tab - is shown to admins only.</p>
+  </div>
+</details>
+
+<ul class="nav nav-tabs" id="db-tabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="db-keys-tab" data-bs-toggle="tab" data-bs-target="#db-keys" type="button" role="tab" aria-controls="db-keys" aria-selected="true">Keys</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="db-projects-tab" data-bs-toggle="tab" data-bs-target="#db-projects" type="button" role="tab" aria-controls="db-projects" aria-selected="false">Projects</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="db-machines-tab" data-bs-toggle="tab" data-bs-target="#db-machines" type="button" role="tab" aria-controls="db-machines" aria-selected="false">Machines</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="db-osusers-tab" data-bs-toggle="tab" data-bs-target="#db-osusers" type="button" role="tab" aria-controls="db-osusers" aria-selected="false">OS users</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="db-assignments-tab" data-bs-toggle="tab" data-bs-target="#db-assignments" type="button" role="tab" aria-controls="db-assignments" aria-selected="false">Assignments</button>
+  </li>
+  {{if .IsAdmin}}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="db-users-tab" data-bs-toggle="tab" data-bs-target="#db-users" type="button" role="tab" aria-controls="db-users" aria-selected="false">Users</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="db-secrets-tab" data-bs-toggle="tab" data-bs-target="#db-secrets" type="button" role="tab" aria-controls="db-secrets" aria-selected="false">Secrets</button>
+  </li>
+  {{end}}
+</ul>
+
+<div class="tab-content pt-3" id="db-tabs-content">
+
+  <div class="tab-pane fade show active" id="db-keys" role="tabpanel" aria-labelledby="db-keys-tab">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle dt" style="width:100%">
+        <thead><tr><th>Name</th><th class="filter">Type</th><th class="filter">Status</th><th>Public key</th><th>Gen</th><th>Used</th><th>Created</th></tr></thead>
+        <tbody>
+        {{range $d.Keys}}
+          <tr>
+            <td>{{.Name}}</td><td>{{.Type}}</td><td>{{.Status}}</td>
+            <td class="mono">{{if .Recipient}}{{.Recipient}}{{else}}<span class="text-body-secondary">not generated</span>{{end}}</td>
+            <td>{{.Generation}}</td>
+            <td>{{if .UseCount}}{{.UseCount}}x, last {{fmtTime .LastUsed}}{{else}}<span class="text-body-secondary">none</span>{{end}}</td>
+            <td>{{fmtTime .CreatedAt}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="db-projects" role="tabpanel" aria-labelledby="db-projects-tab">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle dt" style="width:100%">
+        <thead><tr><th>Name</th><th>Note</th><th>Paths</th></tr></thead>
+        <tbody>
+        {{range $d.Projects}}
+          <tr><td><a href="/projects/{{.M.UUID}}">{{.Name}}</a></td><td>{{.Note}}</td><td>{{len .Paths}}</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="db-machines" role="tabpanel" aria-labelledby="db-machines-tab">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle dt" style="width:100%">
+        <thead><tr><th>Name</th><th class="filter">OS</th><th>Tailscale host</th><th>Agent port</th><th>This machine</th></tr></thead>
+        <tbody>
+        {{range $d.Machines}}
+          <tr>
+            <td>{{.Name}}</td><td>{{.OS}}</td><td>{{.TailscaleHost}}</td>
+            <td>{{if .AgentPort}}{{.AgentPort}}{{else}}-{{end}}</td>
+            <td>{{if eq .M.UUID $d.LocalID}}<span class="badge text-bg-secondary">this machine</span>{{else}}<span class="text-body-secondary">no</span>{{end}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="db-osusers" role="tabpanel" aria-labelledby="db-osusers-tab">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle dt" style="width:100%">
+        <thead><tr><th>User</th><th class="filter">Machine</th><th>Key base</th></tr></thead>
+        <tbody>
+        {{range $d.OSUsers}}
+          <tr><td>{{.Username}}</td><td>{{.MachineName}}</td><td class="mono">{{.KeyBase}}</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="db-assignments" role="tabpanel" aria-labelledby="db-assignments-tab">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle dt" style="width:100%">
+        <thead><tr><th>Project</th><th>Key</th><th class="filter">Machine</th><th>OS user</th></tr></thead>
+        <tbody>
+        {{range $d.Assignments}}
+          <tr><td>{{.ProjectName}}</td><td>{{.KeyName}}</td><td>{{.MachineName}}</td><td>{{.UserName}}</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {{if .IsAdmin}}
+  <div class="tab-pane fade" id="db-users" role="tabpanel" aria-labelledby="db-users-tab">
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle dt" style="width:100%">
+        <thead><tr><th>Username</th><th class="filter">Role</th><th class="filter">2FA</th><th class="filter">Enabled</th></tr></thead>
+        <tbody>
+        {{range $d.Users}}
+          <tr>
+            <td>{{.Username}}</td><td>{{.Role}}</td>
+            <td>{{if .TOTPEnabled}}enrolled{{else}}<span class="text-body-secondary">pending</span>{{end}}</td>
+            <td>{{if .Enabled}}yes{{else}}no{{end}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="db-secrets" role="tabpanel" aria-labelledby="db-secrets-tab">
+    {{$sec := $d.Secrets}}
+    {{if $sec.Err}}<div class="alert alert-warning py-2">{{$sec.Err}}</div>{{end}}
+    {{if $sec.Groups}}
+    <div class="table-responsive">
+      <table class="table table-striped table-hover align-middle dt" style="width:100%">
+        <thead><tr><th>Name</th><th>Project</th><th>Global Set</th><th class="filter">Machine</th><th class="filter">User</th><th class="filter">Key</th><th>Path</th><th>Uses</th></tr></thead>
+        <tbody>
+        {{range $g := $sec.Groups}}
+          {{range $u := $g.Usages}}
+          <tr>
+            <td class="mono">{{$u.Name}}</td>
+            {{if $u.SetID}}<td class="text-body-secondary">-</td>{{else}}<td>{{$u.Project}}</td>{{end}}
+            <td>{{if $u.GlobalSet}}{{$u.GlobalSet}}{{else}}<span class="text-body-secondary">-</span>{{end}}</td>
+            <td>{{$u.Machine}}</td><td>{{$u.User}}</td><td>{{$u.Key}}</td>
+            <td class="mono">{{$u.Path}}</td><td>{{$g.Count}}</td>
+          </tr>
+          {{end}}
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else if not $sec.Err}}
+    <p class="text-body-secondary">No readable secrets on this machine yet.</p>
+    {{end}}
+  </div>
+  {{end}}
+
+</div>
+{{end}}

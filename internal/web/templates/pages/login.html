@@ -1,0 +1,24 @@
+{{define "content"}}
+<div class="card">
+  <div class="card-body">
+    <h1 class="h3 mb-2">Sign in</h1>
+    <form method="post" action="/login">
+      <div class="mb-3">
+        <label class="form-label" for="login-username">Username</label>
+        <input class="form-control" type="text" id="login-username" name="username" autocomplete="username" autofocus required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="login-password">Password</label>
+        <input class="form-control" type="password" id="login-password" name="password" autocomplete="current-password" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="login-code">Authenticator or recovery code</label>
+        <input class="form-control" type="text" id="login-code" name="code" autocomplete="one-time-code" placeholder="6 digits, or a recovery code">
+      </div>
+      <button type="submit" class="btn btn-primary">Sign in</button>
+    </form>
+    <p class="text-body-secondary mt-3">Login needs your password and either a 6-digit code from your
+       authenticator app or one of your one-time recovery codes.</p>
+  </div>
+</div>
+{{end}}

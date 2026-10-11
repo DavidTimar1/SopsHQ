@@ -1,0 +1,115 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h3 mb-2">Global secrets</h1>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About global secrets (define once, share with chosen users)</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <p>A <strong>global secret set</strong> is a named group of values - e.g.
+       <code>OPENROUTER_API_KEY</code> - that is NOT part of a project. You build it by
+       picking one or more <strong>per-user keys</strong> (each key is owned by one OS
+       user). The set is encrypted to each selected key, so its owner decrypts it with
+       their <strong>own</strong> key (no shared private key). Pick several keys and each
+       owner gets their own readable copy.</p>
+    <h6 class="mt-2 mb-1">How it works</h6>
+    <p>Each set is written to <code>&lt;key base&gt;/global/&lt;set&gt;/secrets.yaml</code>
+       in <strong>every chosen user's</strong> own keystore, encrypted to all of them. An
+       app reads it the standard sops way, no SopsHQ in the loop:</p>
+    <ul>
+      <li><code>sops exec-env &lt;path&gt; '&lt;your command&gt;'</code> injects every
+          name=value as an environment variable (the page shows each user's exact path).</li>
+    </ul>
+    <p>A chosen user's private key must be <strong>placed</strong> for their apps to decrypt -
+       any <strong>Apply</strong> for one of their projects does this.</p>
+    <div class="mt-2">
+      <h6 class="mt-2 mb-1">Security note</h6>
+      <p>SopsHQ keeps <strong>no copy</strong> of a value - it encrypts straight into the
+         files and forgets it. Values are hidden until you click <strong>Show</strong>; a
+         reveal is audited by set + secret NAME only, never the value. Each user reads
+         their own copy with their own key - no key is ever shared between accounts.</p>
+    </div>
+  </div>
+</details>
+
+{{if not $d.HasLocalMachine}}
+  <div class="alert alert-warning py-2">Designate this machine first
+     (<a href="/machines">Machines -&gt; this machine</a>) to manage global secrets here.</div>
+{{else}}
+  <h2 class="h4 mt-4 mb-2">Create a shared set</h2>
+  {{if $d.Candidates}}
+    <form method="post" action="/global" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="text" id="g-set-name" name="name" aria-label="Shared set name" placeholder="set name (letters, digits, _ -)" required
+             pattern="[A-Za-z0-9_-]+" title="letters, digits, _ -" class="form-control w-auto">
+      <span class="d-flex flex-wrap gap-3">
+        {{range $d.Candidates}}
+        <span class="form-check">
+          <input class="form-check-input" type="checkbox" id="g-cand-{{.KeyID}}" name="key" value="{{.KeyID}}">
+          <label class="form-check-label" for="g-cand-{{.KeyID}}">{{.Label}}</label>
+        </span>
+        {{end}}
+      </span>
+      <button type="submit" class="btn btn-primary">Create set</button>
+    </form>
+  {{else}}
+    <p class="text-body-secondary">No per-user key is owned by an OS user on this machine yet.
+       Create a per-user key owned by an OS user first (<a href="/keys">Keys</a> -&gt; type
+       <code>per_user</code>, then pick the owner). The key generates itself on first use, so
+       you can create a shared set for its owner right away.</p>
+  {{end}}
+
+  {{range $set := $d.Sets}}
+  <h2 class="h4 mt-4 mb-2">{{$set.Name}}</h2>
+  <p class="text-body-secondary">Readers:
+    {{range $i, $r := $set.Recipients}}{{if $i}}, {{end}}<strong>{{$r.Username}}</strong>{{end}}.
+    <form method="post" action="/global/{{$set.ID}}/delete" class="d-inline confirm"
+          data-confirm="Delete the shared set '{{$set.Name}}' and its files?">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button type="submit" class="btn btn-sm btn-outline-danger">Delete set</button>
+    </form>
+  </p>
+  {{if $set.Err}}
+    <div class="alert alert-warning py-2">{{$set.Err}}</div>
+  {{else}}
+    <details class="mb-3">
+      <summary class="text-primary small" style="cursor:pointer">How each user reads this set</summary>
+      <div class="small text-body-secondary mt-2 ps-2 border-start">
+        <ul>
+        {{range $set.Recipients}}
+          <li><strong>{{.Username}}</strong>:
+              <code>sops exec-env {{.ConsumePath}} '&lt;your command&gt;'</code></li>
+        {{end}}
+        </ul>
+      </div>
+    </details>
+    <form method="post" action="/global/{{$set.ID}}/secrets" class="d-flex flex-wrap gap-2 align-items-start mb-3">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="text" id="g-secret-name-{{$set.ID}}" name="name" aria-label="Secret name" placeholder="SECRET_NAME" required
+             pattern="[A-Za-z0-9_.\-]+" title="letters, digits, _ - ." class="form-control w-auto">
+      <textarea id="g-secret-value-{{$set.ID}}" name="value" rows="2" placeholder="value" aria-label="Secret value" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore class="form-control flex-grow-1 secret-field"></textarea>
+      <button type="submit" class="btn btn-primary">Add secret</button>
+    </form>
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Name</th><th>Value</th><th></th></tr></thead>
+      <tbody>
+      {{range $set.Names}}
+        <tr>
+          <td class="mono">{{.}}</td>
+          <td class="secret-val"><span class="masked">**********</span><span class="shown hidden"></span></td>
+          <td class="text-end">
+            <button type="button" class="btn btn-sm btn-outline-secondary secret-toggle secret-show" data-reveal-url="/global/{{$set.ID}}/secrets/reveal" data-name="{{.}}">Show</button>
+            <form method="post" action="/global/{{$set.ID}}/secrets/delete" class="d-inline confirm" data-confirm="Delete global secret {{.}}?">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="name" value="{{.}}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {{else}}
+        <tr><td colspan="3" class="text-body-secondary text-center">No secrets in this set yet.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  {{end}}
+  {{end}}
+{{end}}
+{{end}}

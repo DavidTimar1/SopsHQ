@@ -1,0 +1,157 @@
+{{define "content"}}
+<h1 class="h3 mb-2">Machines</h1>
+<p class="text-body-secondary">Each machine in your cluster runs SopsHQ. Mark the one this panel
+   runs on as <strong>this machine</strong>; add the others (peers) by their Tailscale address. Two
+   machines sync when they use the <strong>same vault key</strong> (so each can read the other's keys)
+   and the <strong>same transfer key</strong> (which authenticates the connection). Each physical
+   machine is <strong>one record</strong>: SopsHQ never creates a second one for the same machine, and
+   when a brand-new machine appears while you already have a peer it asks whether it is a new machine
+   or a reinstall of an existing one.</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About linking two machines</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <p class="mb-2"><strong>Same vault key.</strong> The vault key is derived from your vault key, so
+       using the same vault key on both machines means each can decrypt the keys it syncs from the
+       other - nothing else to exchange.</p>
+    <p class="mb-2"><strong>Transfer key.</strong> A shared secret you set on both machines (below). It
+       authenticates machine-to-machine requests; the traffic itself rides your encrypted Tailscale
+       network. Set it, then add each machine on the other by its Tailscale address.</p>
+    <p class="mb-0"><strong>No certificates.</strong> There are no certs or fingerprints to copy - just
+       the vault key, the transfer key, and each machine's URL.</p>
+  </div>
+</details>
+
+{{if .IsAdmin}}
+<div class="card mb-3">
+  <div class="card-header">Cluster transfer key</div>
+  <div class="card-body">
+    <p class="small text-body-secondary mb-2">A shared secret that authenticates sync between your
+       machines. Set the <strong>same</strong> value on every machine. It is stored vault-sealed, never
+       shown again, and takes effect on the next restart.
+       {{if .Data.TransferKeySet}}<span class="badge text-bg-success">set</span>{{else}}<span class="badge text-bg-warning">not set</span>{{end}}</p>
+    <form method="post" action="/machines/transfer-key" class="d-flex flex-wrap gap-2 align-items-center">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="text" id="transfer-key" name="transfer_key" class="form-control w-auto secret-field" placeholder="transfer key" aria-label="Transfer key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore required>
+      <button type="submit" class="btn btn-sm btn-primary">Save transfer key</button>
+    </form>
+    {{if .Data.ThisAgentURL}}
+    <p class="form-text mb-0 mt-2">This machine's address for the other to use:
+       <code class="user-select-all">{{.Data.ThisAgentURL}}</code></p>
+    {{else}}
+    <p class="form-text mb-0 mt-2">Tip: the other machine reaches this one at
+       <code>http://&lt;this-node's-tailscale-ip&gt;:&lt;agent-port&gt;</code> (its stable 100.x Tailscale IP, from <code>tailscale status</code>).</p>
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+<form method="post" action="/machines" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="text" id="machine-name" name="name" placeholder="name (e.g. linux-server)" aria-label="Machine name" class="form-control w-auto" required>
+  <select id="machine-os" name="os" aria-label="Operating system" class="form-select w-auto">
+    <option value="linux">linux</option>
+    <option value="windows">windows</option>
+  </select>
+  <input type="text" id="machine-host" name="tailscale_host" aria-label="Host or IP" placeholder="host or IP, no http:// (host.tailnet.ts.net or 100.x.y.z)" class="form-control w-auto">
+  <input type="number" id="machine-agent-port" name="agent_port" aria-label="Agent port" placeholder="agent port" min="0" max="65535" class="form-control w-auto">
+  <button type="submit" class="btn btn-primary">Add peer</button>
+  <div class="form-text w-100">Host field: just the hostname or IP - not a full URL. Put the port in the
+     separate port field. A pasted <code>http://host:port</code> is accepted and split for you.</div>
+  <div class="alert alert-info small w-100 mb-0 mt-2 py-2">Sync is set up per machine. After you add a peer here,
+     you must also add <strong>this</strong> machine as a peer on that other machine. Sync is pull-based: each
+     side needs the other's address, so it will not start until both machines list each other.</div>
+</form>
+
+<div class="d-flex align-items-center gap-2 mb-2">
+  <form method="post" action="/sync">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="back" value="/machines">
+    <button type="submit" class="btn btn-sm btn-outline-primary">Sync now</button>
+  </form>
+  <span class="small text-body-secondary">Sync runs automatically every 30s. Each machine
+     <strong>pulls</strong> the other's database, so for this machine's keys to appear on a peer,
+     that peer must list this machine and use the same vault key + transfer key. The status below
+     is checked live when this page loads.</span>
+</div>
+
+{{$candidates := .Data.Candidates}}
+{{$local := .Data.LocalID}}
+{{range .Data.Machines}}
+  {{if .Pending}}
+  <div class="card border-warning mb-3">
+    <div class="card-header bg-warning-subtle">New peer awaiting confirmation: <strong>{{.Name}}</strong></div>
+    <div class="card-body">
+      <p class="small text-body-secondary mb-3">A machine called <strong>{{.Name}}</strong> appeared while you
+         already have another machine. Is it a <strong>new machine</strong>, or a <strong>reinstall</strong> of a
+         machine you already have? A reinstall takes over the existing machine's identity, so its keys,
+         projects and assignments stay with it - no duplicate machine is created.</p>
+      <div class="d-flex flex-wrap gap-3 align-items-start">
+        <form method="post" action="/machines/{{.M.UUID}}/confirm-new">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button type="submit" class="btn btn-sm btn-outline-primary">This is a new machine</button>
+        </form>
+        {{if $candidates}}
+        <form method="post" action="/machines/{{.M.UUID}}/confirm-reinstall" class="d-flex flex-wrap gap-2 align-items-center">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <select id="reinstall-target-{{.M.UUID}}" name="target" aria-label="Machine this one replaces" class="form-select form-select-sm w-auto" required>
+            <option value="">reinstall of...</option>
+            {{$pid := .M.UUID}}
+            {{range $candidates}}{{if ne .M.UUID $pid}}<option value="{{.M.UUID}}">{{.Name}}</option>{{end}}{{end}}
+          </select>
+          <button type="submit" class="btn btn-sm btn-warning">Reinstall of this machine</button>
+        </form>
+        {{else}}
+        <span class="small text-body-secondary">No existing machine to reinstall onto.</span>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{end}}
+{{end}}
+
+{{if .Data.Machines}}
+<div class="card">
+  <div class="card-body table-responsive">
+    <table class="table table-striped table-hover align-middle dt" style="width:100%">
+      <thead><tr><th>Name</th><th class="filter">OS</th><th>Tailscale host</th><th>Agent port</th><th class="no-sort">Sync status</th><th class="no-sort">This machine</th><th class="no-sort"></th></tr></thead>
+      <tbody>
+      {{range .Data.Machines}}
+        <tr>
+          <td>{{.Name}}{{if .Pending}} <span class="badge text-bg-warning">pending confirmation</span>{{end}}</td><td>{{.OS}}</td><td>{{.TailscaleHost}}</td>
+          <td>{{if .AgentPort}}{{.AgentPort}}{{else}}-{{end}}</td>
+          <td>
+            {{if eq .M.UUID $.Data.LocalID}}<span class="text-body-secondary">-</span>
+            {{else}}
+              {{$st := index $.Data.Status .M.UUID}}
+              {{if $st.Reachable}}<span class="badge text-bg-success">reachable</span>{{if $st.Version}} <span class="small text-body-secondary">v{{$st.Version}}</span>{{end}}
+              {{else}}<span class="badge text-bg-danger">unreachable</span>{{end}}
+              {{if $st.Err}}<div class="small text-danger">{{$st.Err}}</div>{{end}}
+              {{if $st.LastSyncUnix}}<div class="small text-body-secondary">last pull {{fmtTime $st.LastSyncUnix}}: {{$st.Applied}} applied{{if $st.Conflicts}}, {{$st.Conflicts}} conflict(s){{end}}</div>
+              {{else}}<div class="small text-body-secondary">no pull yet</div>{{end}}
+            {{end}}
+          </td>
+          <td>
+            {{if eq .M.UUID $.Data.LocalID}}<span class="badge text-bg-secondary">this machine</span>
+            {{else}}
+            <form method="post" action="/machines/{{.M.UUID}}/local" class="d-inline confirm" data-confirm="Mark {{.Name}} as the machine this panel runs on?">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button type="submit" class="btn btn-sm btn-outline-secondary">Set as local</button>
+            </form>
+            {{end}}
+          </td>
+          <td class="text-end">
+            <form method="post" action="/machines/{{.M.UUID}}/delete" class="d-inline confirm" data-confirm="Delete machine {{.Name}}?">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{else}}
+<p class="text-body-secondary">No machines yet.</p>
+{{end}}
+{{end}}

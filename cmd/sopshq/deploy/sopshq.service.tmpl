@@ -1,0 +1,58 @@
+# SopsHQ systemd service unit.
+#
+# `sopshq setup` renders this template - substituting the chosen paths and service
+# account - and writes the result to /etc/systemd/system/sopshq.service.
+#
+# The service is deliberately NOT enabled at boot: SopsHQ never auto-unlocks its vault.
+# Start it by hand with `systemctl start sopshq`. Because a non-root service has no
+# terminal to type the vault key on, serve starts LOCKED and waits: run
+# `sudo sopshq unlock` to type the vault key and bring the panel up.
+[Unit]
+Description=SopsHQ - SOPS/age key management control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Type=notify: serve reports READY=1 over $NOTIFY_SOCKET once it is listening on the
+# unlock socket (still locked), so `systemctl start` returns promptly and status shows
+# "locked" until the operator runs `sopshq unlock`. NotifyAccess=main limits who may
+# post that readiness to the main process.
+Type=notify
+NotifyAccess=main
+User={{.User}}
+Group={{.User}}
+
+# The private unlock socket lives here: RuntimeDirectory=sopshq creates /run/sopshq
+# (owned by the service account) and hands the path back in $RUNTIME_DIRECTORY.
+# RuntimeDirectoryMode=0700 keeps it reachable only by root and the service account,
+# which is the real access boundary around the socket that carries the vault key.
+RuntimeDirectory=sopshq
+RuntimeDirectoryMode=0700
+
+# Where the binary, config, and data live (chosen at setup time).
+ExecStart={{.Bin}} serve -config {{.Config}}
+WorkingDirectory={{.WorkDir}}
+
+# A homeless service account: point HOME at the data area so any home-relative write
+# (for example the self-account sops discovery wiring) lands inside the managed tree.
+Environment=HOME={{.WorkDir}}
+# The vault is unlocked by the operator via `sopshq unlock`, so a crash must NOT
+# auto-restart into an unattended, locked-and-waiting loop. Manual control only,
+# matching "the vault never auto-unlocks at boot".
+Restart=no
+
+# Sandboxing. SopsHQ runs fully unprivileged and must not gain privileges.
+NoNewPrivileges=yes
+# The whole filesystem is read-only except the paths listed in ReadWritePaths below.
+ProtectSystem=strict
+# Hide every user home from the service. When data or keys are placed UNDER a home (the
+# setup --force-home path), setup renders this as "no" so the service can reach it.
+ProtectHome={{.ProtectHome}}
+PrivateTmp=yes
+# The only writable locations: the data directory (config, vault, store, audit, sealed
+# keys) and the keybase root (per-user key stores). If SopsHQ also writes secrets into
+# project folders elsewhere on disk, ADD those folders here or the write will be denied.
+ReadWritePaths={{.ReadWrite}}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,69 @@
+{{define "content"}}
+<h1 class="h3 mb-2">Usage <span class="text-body-secondary small">(best-effort)</span></h1>
+<p class="text-body-secondary">Decrypt events that machines have <strong>reported</strong> - typically
+   from the optional <code>sops</code> shim. SopsHQ is a management plane, not a
+   decrypt gateway, so this is best-effort and bypassable, and each machine only
+   reports its own. Use <strong>Install usage shim</strong> below to set it up (or
+   install from <code>shims/</code> by hand).</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About usage &amp; why it is "best-effort"</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <h6 class="mt-2 mb-1">What this page is</h6>
+    <p>A log of times a key was used to DECRYPT something, as reported by the machines
+       themselves. It helps answer "is this key still in use?" before retiring it.</p>
+    <h6 class="mt-2 mb-1">Why it is not authoritative</h6>
+    <p>SopsHQ is never in the decrypt path - once a key is placed, <code>sops -d</code>
+       runs entirely locally without asking SopsHQ. So usage is only visible if a
+       machine volunteers it through the optional <code>sops</code> shim (a thin
+       wrapper that reports each decrypt). Anyone can decrypt without the shim, so a
+       blank or low count does NOT prove a key is unused.</p>
+    <div class="mt-2">
+      <h6 class="mt-2 mb-1">Security note</h6>
+      <p>Reports record the file path and which keys were attributed - never the
+         decrypted values. Use the <strong>Install usage shim</strong> button below
+         (or the scripts in <code>shims/</code>) to start populating this.</p>
+    </div>
+  </div>
+</details>
+
+<h2 class="h4 mt-4 mb-2">Usage shim (this machine)</h2>
+<p class="text-body-secondary">The shim is a small <code>sops</code> wrapper that reports each decrypt
+   to this panel, then runs the real <code>sops</code>. SopsHQ installs it per-user
+   (no admin): it writes the wrapper under <code class="mono">{{.Data.Shim.Dir}}</code>
+   and puts it on your <code>PATH</code>. Uninstall reverses everything.</p>
+{{if .Data.Shim.Installed}}
+  <div class="alert alert-success py-2">Installed for the current user. Open a new terminal so it takes effect.</div>
+  <div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+    <form method="post" action="/usage/shim/uninstall" class="d-inline confirm"
+          data-confirm="Remove the usage shim: delete its files, drop it from PATH, and clear its env vars?">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="btn btn-outline-danger">Uninstall shim</button>
+    </form>
+  </div>
+{{else}}
+  <div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+    <form method="post" action="/usage/shim/install" class="d-inline confirm"
+          data-confirm="Install the usage shim for your user? It writes a sops wrapper and prepends it to your PATH (reversible).">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="btn btn-primary">Install usage shim</button>
+    </form>
+  </div>
+{{end}}
+
+<h2 class="h4 mt-4 mb-2">Reported events</h2>
+<table class="table table-sm align-middle">
+  <thead><tr><th>Time</th><th>User</th><th>Path</th><th>Attributed keys</th><th>Source</th></tr></thead>
+  <tbody>
+  {{range .Data.Rows}}
+    <tr>
+      <td>{{fmtTime .Time}}</td><td>{{.User}}</td>
+      <td class="mono">{{.Path}}</td>
+      <td>{{if .Keys}}{{.Keys}}{{else}}<span class="text-body-secondary">unattributed</span>{{end}}</td>
+      <td>{{.Source}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="5" class="text-body-secondary text-center">No reported usage yet. Install the sops shim to populate this.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}

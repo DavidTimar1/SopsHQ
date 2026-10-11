@@ -1,0 +1,83 @@
+{{define "content"}}
+<h1 class="h3 mb-2">Audit log</h1>
+<p class="text-body-secondary">Most recent actions first (up to 500). Secrets are never recorded -
+   only who did what, to which target, and the outcome.</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About the audit log (security)</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <h6 class="mt-2 mb-1">What this page is</h6>
+    <p>An append-only record of actions taken through the panel: who did it, what they
+       did, which target it touched, and whether it succeeded, failed, or was denied.
+       Revealing a secret value is recorded too (as <code>secret_reveal</code>, by
+       NAME only).</p>
+    <div class="mt-2">
+      <h6 class="mt-2 mb-1">Security note</h6>
+      <p>The log identifies things only by NAME or UUID. It never contains a private
+         key, a vault key, an authenticator secret, or a decrypted secret
+         value - so the audit trail itself is safe to read and keep.</p>
+    </div>
+  </div>
+</details>
+{{if or .Data .IsAdmin}}
+<div class="card mb-3">
+  <div class="card-header">Filter{{if .IsAdmin}} and purge{{end}}</div>
+  <div class="card-body">
+    <div class="d-flex flex-wrap gap-3 align-items-end">
+      <div>
+        <label class="form-label mb-1" for="audit-from">From date</label>
+        <input type="date" id="audit-from" class="form-control w-auto">
+      </div>
+      <div>
+        <label class="form-label mb-1" for="audit-to">To date</label>
+        <input type="date" id="audit-to" class="form-control w-auto">
+      </div>
+      <div>
+        <button type="button" id="audit-filter-clear" class="btn btn-outline-secondary">Clear filter</button>
+      </div>
+    </div>
+    <p class="text-body-secondary mt-2 mb-0">The date filter narrows the rows shown below by the Time column; it
+       deletes nothing.</p>
+    {{if .IsAdmin}}
+    <hr>
+    <p class="text-body-secondary">Purging is <strong>permanent</strong> and cannot be undone. Use the retention
+       policy on the <a href="/settings">Settings</a> page to trim the log automatically each day.</p>
+    <div class="d-flex flex-wrap gap-3 align-items-end">
+      <form method="post" action="/audit/purge-before" class="confirm d-flex flex-wrap gap-2 align-items-end"
+            data-confirm="Delete all audit entries on or before the chosen date? This cannot be undone.">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div>
+          <label class="form-label mb-1" for="purge-before">Purge up to</label>
+          <input type="date" id="purge-before" name="date" class="form-control w-auto" required>
+        </div>
+        <button type="submit" class="btn btn-outline-danger">Purge up to date</button>
+      </form>
+      <form method="post" action="/audit/purge-all" class="confirm"
+            data-confirm="Delete ALL audit entries? This cannot be undone.">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button type="submit" class="btn btn-outline-danger">Purge all</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+{{if .Data}}
+<div class="card">
+  <div class="card-body table-responsive">
+    <table id="audit-table" class="table table-striped table-hover align-middle dt" style="width:100%">
+      <thead><tr><th>Time</th><th class="filter">Actor</th><th class="filter">Action</th><th>Target</th><th class="filter">Outcome</th><th>Detail</th></tr></thead>
+      <tbody>
+      {{range .Data}}
+        <tr class="{{if eq .Outcome "failed"}}table-danger{{else if eq .Outcome "denied"}}table-warning{{end}}">
+          <td>{{fmtTime .Time}}</td><td>{{.Actor}}</td><td class="mono">{{.Action}}</td>
+          <td>{{.Target}}</td><td>{{.Outcome}}</td><td>{{.Detail}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{else}}
+<p class="text-body-secondary">No audit entries yet.</p>
+{{end}}
+{{end}}

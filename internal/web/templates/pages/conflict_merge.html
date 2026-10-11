@@ -1,0 +1,54 @@
+{{define "content"}}
+{{$g := .Data.Group}}
+<h1 class="h3 mb-2">Confirm merge</h1>
+<div class="alert alert-danger">
+  <strong>This permanently deletes {{len .Data.Losers}} record(s) and cannot be undone.</strong>
+  Read exactly what will be kept and removed, then confirm below.
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><span class="badge text-bg-secondary text-uppercase">{{$g.EntityType}}</span> {{$g.KeyLabel}}</div>
+  <div class="card-body">
+    <h2 class="h6 text-success">Kept</h2>
+    <p class="mb-1"><span class="badge text-bg-success">survivor</span> {{.Data.Survivor.Summary}}</p>
+    <ul class="small text-body-secondary">
+      {{range .Data.Survivor.Facts}}{{if .Value}}<li>{{.Label}}: <span class="mono">{{.Value}}</span></li>{{end}}{{end}}
+    </ul>
+
+    <h2 class="h6 text-danger mt-3">Permanently deleted</h2>
+    {{range .Data.Losers}}
+    <p class="mb-1"><span class="badge text-bg-danger">deleted</span> Permanently delete record <strong>{{.Summary}}</strong>. This cannot be undone.</p>
+    <ul class="small text-body-secondary">
+      {{range .Facts}}{{if .Value}}<li>{{.Label}}: <span class="mono">{{.Value}}</span></li>{{end}}{{end}}
+    </ul>
+    {{end}}
+
+    {{if .Data.Picks}}
+    <h2 class="h6 mt-3">Chosen values (where the records differed)</h2>
+    <ul class="small">
+      {{range .Data.Picks}}
+      <li>{{.FieldLabel}}: {{if .Secret}}<span class="text-body-secondary">{{.Display}}</span>{{else}}<span class="mono">{{.Display}}</span>{{end}}</li>
+      {{end}}
+    </ul>
+    {{end}}
+
+    <p class="small text-body-secondary">Every key grant, project path, account and setting that pointed at a
+       deleted record is moved onto the kept record first, so nothing that is not listed above is lost.</p>
+  </div>
+</div>
+
+<form method="post" action="/conflicts/merge/execute">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="entity" value="{{$g.EntityType}}">
+  <input type="hidden" name="ids" value="{{.Data.IDs}}">
+  {{range .Data.Picks}}<input type="hidden" name="pick_{{.FieldKey}}" value="{{.RecordID}}">{{end}}
+  <div class="form-check mb-2">
+    <input class="form-check-input" type="checkbox" name="confirm_delete" value="yes" id="confirm_delete" required>
+    <label class="form-check-label" for="confirm_delete">
+      I understand this permanently deletes the record(s) listed above.
+    </label>
+  </div>
+  <button type="submit" class="btn btn-danger">Merge and delete the duplicate(s)</button>
+  <a href="/conflicts" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{{end}}

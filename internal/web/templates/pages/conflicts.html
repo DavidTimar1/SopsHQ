@@ -1,0 +1,154 @@
+{{define "content"}}
+<h1 class="h3 mb-2">Conflicts to resolve</h1>
+<p class="text-body-secondary">SopsHQ found records that look like the same thing but
+   <strong>disagree on a value</strong>. It never merges them automatically, because doing so
+   would silently drop one side. Resolve each one below: <strong>merge into one</strong> (keeping the
+   value you choose) or <strong>keep both</strong> (they really are different things). Only non-secret
+   facts are shown - never a sealed key, password, token, or private key.</p>
+
+{{if .Data.Fields}}
+<h2 class="h5 mt-4 mb-2">Same field, changed on both machines</h2>
+<p class="text-body-secondary small">Both machines changed the <strong>same field of the same record</strong> to
+   different values before they synced. SopsHQ kept <strong>this machine's</strong> value and never overwrote
+   it. Choose which value to keep - the other is discarded. You confirm on the next screen before anything
+   changes. Secret material (a private key) is never shown - only which machine it came from.</p>
+{{range .Data.Fields}}
+<div class="card mb-3">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span><span class="badge text-bg-secondary text-uppercase">field</span> {{.KeyLabel}}</span>
+    <span class="small text-body-secondary">field: {{.GroupLabel}}</span>
+  </div>
+  <div class="card-body">
+    {{if not $.IsAdmin}}
+    <div class="alert alert-secondary small mb-0">Resolving a conflict is admin-only. Ask an administrator to resolve this.</div>
+    {{else}}
+    <form method="post" action="/conflicts/field/confirm" class="border rounded p-3">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <p class="small text-body-secondary mb-2">Choose which value to keep for <strong>{{.GroupLabel}}</strong>.</p>
+      <div class="form-check">
+        <input class="form-check-input" type="radio" name="pick" id="pick_{{.ID}}_local" value="local" checked>
+        <label class="form-check-label small" for="pick_{{.ID}}_local">
+          Keep this machine's value:
+          {{if .Secret}}<span class="text-body-secondary">{{.Local.Display}}</span>{{else}}<span class="mono">{{.Local.Display}}</span>{{end}}
+          {{if .Local.Origin}}<span class="text-body-secondary">(from {{.Local.Origin}})</span>{{end}}
+        </label>
+      </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="radio" name="pick" id="pick_{{.ID}}_remote" value="remote">
+        <label class="form-check-label small" for="pick_{{.ID}}_remote">
+          Take the other machine's value:
+          {{if .Secret}}<span class="text-body-secondary">{{.Remote.Display}}</span>{{else}}<span class="mono">{{.Remote.Display}}</span>{{end}}
+          {{if .Remote.Origin}}<span class="text-body-secondary">(from {{.Remote.Origin}})</span>{{end}}
+        </label>
+      </div>
+      <button type="submit" class="btn btn-sm btn-danger">Review and apply...</button>
+      <div class="form-text">You will confirm discarding the other value on the next screen.</div>
+    </form>
+    {{end}}
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{if .Data.Groups}}
+<h2 class="h5 mt-4 mb-2">Duplicate records</h2>
+{{range .Data.Groups}}
+{{$ids := join .RecordIDs ","}}
+<div class="card mb-4">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span><span class="badge text-bg-secondary text-uppercase">{{.EntityType}}</span> {{.KeyLabel}}</span>
+    <span class="small text-body-secondary">{{len .Records}} records share this identity but differ</span>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-3">
+        <thead><tr><th>Record</th><th>Details (differences highlighted)</th></tr></thead>
+        <tbody>
+        {{range .Records}}
+          <tr>
+            <td class="text-nowrap">
+              {{.Summary}}
+              {{if .Survivor}}<div><span class="badge text-bg-success">kept on merge</span></div>
+              {{else}}<div><span class="badge text-bg-danger">removed on merge</span></div>{{end}}
+            </td>
+            <td>
+              {{range .Facts}}{{if .Value}}
+                <div class="small {{if .Differs}}fw-semibold text-warning-emphasis{{else}}text-body-secondary{{end}}">
+                  {{.Label}}: <span class="mono">{{.Value}}</span>{{if .Differs}} <span class="badge text-bg-warning">differs</span>{{end}}
+                </div>
+              {{end}}{{end}}
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    {{if not $.IsAdmin}}
+    <div class="alert alert-secondary small mb-0">Resolving a conflict (merge or keep both) is admin-only. Ask an administrator to resolve this.</div>
+    {{else}}
+    <div class="row g-3">
+      <div class="col-lg-8">
+        <form method="post" action="/conflicts/merge/confirm" class="border rounded p-3 h-100">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <input type="hidden" name="entity" value="{{.EntityType}}">
+          <input type="hidden" name="ids" value="{{$ids}}">
+          <h2 class="h6">Merge into one</h2>
+          {{if .Fields}}
+          <p class="small text-body-secondary mb-2">Choose which value to keep for each field that differs.
+             Everything else (any field only one record sets, and every key grant, path and account
+             reference) is preserved automatically.</p>
+          {{range .Fields}}
+          <fieldset class="mb-2">
+            <legend class="fs-6 fw-semibold mb-1">{{.Label}}</legend>
+            {{$fk := .Key}}{{$secret := .Secret}}
+            {{range $i, $o := .Options}}
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="pick_{{$fk}}" id="pick_{{$fk}}_{{$i}}" value="{{$o.RecordID}}"{{if eq $i 0}} checked{{end}}>
+              <label class="form-check-label small" for="pick_{{$fk}}_{{$i}}">
+                {{if $secret}}<span class="text-body-secondary">{{$o.Display}}</span>{{else}}<span class="mono">{{$o.Display}}</span>{{end}}
+              </label>
+            </div>
+            {{end}}
+          </fieldset>
+          {{end}}
+          {{else}}
+          <p class="small text-body-secondary mb-2">No value needs a choice; merging simply keeps the
+             survivor and moves every reference onto it.</p>
+          {{end}}
+          <button type="submit" class="btn btn-sm btn-danger">Review and merge...</button>
+          <div class="form-text">You will confirm the deletion on the next screen before anything is removed.</div>
+        </form>
+      </div>
+      <div class="col-lg-4">
+        {{if .KeepBothOK}}
+        <form method="post" action="/conflicts/keep-both" class="border rounded p-3 h-100 confirm"
+              data-confirm="Keep these as separate records? SopsHQ will stop flagging them.">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <input type="hidden" name="entity" value="{{.EntityType}}">
+          <input type="hidden" name="ids" value="{{$ids}}">
+          <h2 class="h6">Keep both</h2>
+          <p class="small text-body-secondary mb-2">These are genuinely different things. Nothing is
+             deleted; SopsHQ records the decision (it syncs to your other machine) and stops flagging them.</p>
+          <button type="submit" class="btn btn-sm btn-outline-secondary">Keep both, they are distinct</button>
+        </form>
+        {{else}}
+        <div class="border rounded p-3 h-100 bg-body-tertiary">
+          <h2 class="h6">Keep both</h2>
+          <p class="small text-body-secondary mb-0">Not available here: a machine has only one such record,
+             so two cannot both be valid. Merge and pick which value to keep.</p>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{if and (not .Data.Groups) (not .Data.Fields)}}
+<div class="alert alert-success">No conflicts to resolve. Every record is either unique or already merged.</div>
+{{end}}
+{{end}}

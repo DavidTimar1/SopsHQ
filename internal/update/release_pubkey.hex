@@ -1,0 +1,6 @@
+# The release signing PUBLIC key (ML-DSA-65), as one hex string, embedded into the
+# binary at build time. Releases are signed with the matching private key, which only
+# the release operator holds. "sopshq update" refuses every update while this file holds
+# no key. To sign your own releases, run "go run ./cmd/releasesign keygen" and rebuild;
+# see docs/releasing.md.
+# Lines starting with # and blank lines are ignored.

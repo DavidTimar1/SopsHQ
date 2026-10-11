@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="card">
+  <div class="card-body">
+    <h1 class="h3 mb-2">Welcome to SopsHQ</h1>
+    <p>Create the first administrator account. After this you will enroll an
+       authenticator app for two-factor login.</p>
+    <form method="post" action="/setup">
+      <div class="mb-3">
+        <label class="form-label" for="setup-username">Username</label>
+        <input class="form-control" type="text" id="setup-username" name="username" autocomplete="username" autofocus required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="setup-password">Password (at least 8 characters)</label>
+        <input class="form-control" type="password" id="setup-password" name="password" autocomplete="new-password" minlength="8" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Create admin</button>
+    </form>
+  </div>
+</div>
+{{end}}

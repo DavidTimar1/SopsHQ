@@ -1,0 +1,172 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h3 mb-2">Permissions</h1>
+<p class="text-body-secondary">A read-only audit of who can access what across this Linux machine's
+   filesystem: ownership, octal mode, special bits, POSIX ACLs, and file capabilities. Find
+   world-writable, dangerous, ACL'd, and ACL-override paths; browse the folder tree; and see what
+   changed since a baseline. It never changes any permission.</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About this page</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <p class="mb-2"><strong>What this page is.</strong> A whole-server permission map. It runs the
+       standard Linux tools (<code>find</code>, <code>getfacl</code>, <code>getcap</code>) over chosen
+       directory roots and records, for every path, the owner, owning group, mode (with setuid/setgid/
+       sticky), any named ACL entries, and file capabilities - then flags the security-relevant ones.</p>
+    <p class="mb-2"><strong>The four queries.</strong> <em>World-writable</em> (anyone can write),
+       <em>Dangerous</em> (world-writable non-sticky paths plus setuid/setgid), <em>Has ACL</em> (a named
+       user/group beyond owner/group/other), and <em>ACL override</em> (a named principal granted access
+       beyond the owner and owning group). Plus free-text search and a folder tree.</p>
+    <p class="mb-2"><strong>Drift.</strong> Set a <strong>baseline</strong>, and each day SopsHQ re-scans,
+       compares, and (if you opted in under Notifications) sends a digest of what changed - added,
+       removed, and the before-&gt;after of each changed attribute. It is read-only; it never fixes
+       anything.</p>
+    <p class="mb-0"><strong>Security.</strong> The map reveals the full filesystem layout and who can
+       access what, so this page is <strong>admin-only</strong>, the data is <strong>machine-local</strong>
+       (vault-sealed, never replicated to the other machine), and the scan runs as a dedicated,
+       locked-down user with read-only sudo - not as SopsHQ itself.</p>
+  </div>
+</details>
+
+{{if not $d.Available}}
+  <div class="alert alert-secondary">
+    The permission auditor is <strong>Linux only</strong>. {{$d.ScanStatus.Detail}}
+  </div>
+{{else}}
+
+<div id="permmap-page" data-has-scan="{{if $d.HasScan}}1{{end}}" data-has-baseline="{{if $d.HasBaseline}}1{{end}}">
+
+  <!-- Status + controls -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="fw-semibold">Status:</span>
+        {{if $d.Enabled}}<span class="badge text-bg-success">enabled</span>{{else}}<span class="badge text-bg-secondary">disabled</span>{{end}}
+        {{if $d.ScanStatus.Usable}}<span class="badge text-bg-success">scan user ready</span>{{else}}<span class="badge text-bg-warning">scan user not ready</span>{{end}}
+        {{if $d.HasScan}}<span class="text-body-secondary small">last scan {{fmtTime $d.ScannedAt}}</span>{{else}}<span class="text-body-secondary small">no scan yet</span>{{end}}
+        {{if $d.HasBaseline}}<span class="text-body-secondary small">- baseline {{fmtTime $d.BaselineAt}}</span>{{end}}
+      </div>
+      <p class="small text-body-secondary mb-2">{{$d.ScanStatus.Detail}}</p>
+
+      {{if $d.HasScan}}
+      <div class="d-flex flex-wrap gap-2 mb-1">
+        <span class="badge rounded-pill text-bg-light border">Total {{$d.Counts.Total}}</span>
+        <span class="badge rounded-pill text-bg-danger">Dangerous {{$d.Counts.Dangerous}}</span>
+        <span class="badge rounded-pill text-bg-warning">World-writable {{$d.Counts.WorldWritable}}</span>
+        <span class="badge rounded-pill text-bg-info">Has ACL {{$d.Counts.HasACL}}</span>
+        <span class="badge rounded-pill text-bg-info">ACL override {{$d.Counts.ACLOverride}}</span>
+        <span class="badge rounded-pill text-bg-secondary">SUID/SGID {{$d.Counts.SuidSgid}}</span>
+      </div>
+      {{end}}
+
+      <div class="d-flex flex-wrap gap-2 mt-2">
+        {{if $d.Enabled}}
+          <form method="post" action="/permmap/scan" class="d-inline">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <button type="submit" class="btn btn-sm btn-primary" id="permmap-scan-btn">Scan now</button>
+          </form>
+          {{if $d.HasScan}}
+          <form method="post" action="/permmap/baseline" class="d-inline confirm" data-confirm="Set the current scan as the drift baseline?">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Set baseline</button>
+          </form>
+          {{end}}
+          <form method="post" action="/permmap/disable" class="d-inline confirm" data-confirm="Disable the permission auditor? Stored scans are kept.">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Disable</button>
+          </form>
+        {{else}}
+          <form method="post" action="/permmap/enable" class="d-inline">
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <button type="submit" class="btn btn-sm btn-success" {{if not $d.ScanStatus.Usable}}disabled title="Provision the scan user first"{{end}}>Enable</button>
+          </form>
+        {{end}}
+      </div>
+      <p class="form-text mt-1 mb-0">A scan runs the collectors over the configured roots and can take a
+        while on large trees; the page responds when it finishes.</p>
+    </div>
+  </div>
+
+  <!-- Setup / configuration -->
+  <details class="card mb-3" {{if not $d.Enabled}}open{{end}}>
+    <summary class="card-header" style="cursor:pointer">Scan user &amp; roots (setup)</summary>
+    <div class="card-body">
+      <form method="post" action="/permmap/config" class="mb-3">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label mb-1" for="permmap-user">Scan user</label>
+            <input type="text" class="form-control" id="permmap-user" name="scan_user" value="{{$d.ScanUser}}" placeholder="sopshq-scan">
+            <p class="form-text">A dedicated, locked-down Linux user the scan runs as (no login, no SSH).</p>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label mb-1" for="permmap-roots">Roots (one per line)</label>
+            <textarea class="form-control mono" id="permmap-roots" name="roots" rows="5" placeholder="/home&#10;/etc">{{$d.RootsText}}</textarea>
+            <p class="form-text">Directory roots to scan. Pseudo-filesystems and container layers are best left out.</p>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-sm btn-primary">Save settings</button>
+          </div>
+        </div>
+      </form>
+      <p class="small mb-1"><strong>Provision the scan user</strong> (run these on this machine, then
+        press <em>Enable</em> above - enabling is refused until the user exists and can run the
+        collectors):</p>
+      <pre class="border rounded p-2 bg-body-tertiary small" style="white-space:pre-wrap">{{$d.Instructions}}</pre>
+    </div>
+  </details>
+
+  {{if and $d.Enabled $d.HasScan}}
+  <!-- Explorer: list / tree / changes -->
+  <ul class="nav nav-tabs" id="permmap-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="pm-list-tab" data-bs-toggle="tab" data-bs-target="#pm-list" type="button" role="tab">List</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="pm-tree-tab" data-bs-toggle="tab" data-bs-target="#pm-tree" type="button" role="tab">Tree</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="pm-changes-tab" data-bs-toggle="tab" data-bs-target="#pm-changes" type="button" role="tab">Changes since baseline</button>
+    </li>
+  </ul>
+
+  <div class="tab-content pt-3">
+    <div class="tab-pane fade show active" id="pm-list" role="tabpanel">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <div class="btn-group btn-group-sm" role="group" id="permmap-filters">
+          <button type="button" class="btn btn-outline-secondary active" data-filter="dangerous">Dangerous</button>
+          <button type="button" class="btn btn-outline-secondary" data-filter="world_writable">World-writable</button>
+          <button type="button" class="btn btn-outline-secondary" data-filter="has_acl">Has ACL</button>
+          <button type="button" class="btn btn-outline-secondary" data-filter="acl_override">ACL override</button>
+          <button type="button" class="btn btn-outline-secondary" data-filter="suid_sgid">SUID/SGID</button>
+          <button type="button" class="btn btn-outline-secondary" data-filter="">All</button>
+        </div>
+        <input type="search" class="form-control form-control-sm" id="permmap-search" aria-label="Search the permission map" placeholder="Search path, owner, group, ACL..." style="max-width:22rem">
+      </div>
+      <p class="small text-body-secondary mb-2" id="permmap-list-status">Loading...</p>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover align-middle">
+          <thead><tr><th>Path</th><th>Type</th><th>Owner</th><th>Group</th><th>Mode</th><th>ACL</th><th>Flags</th></tr></thead>
+          <tbody id="permmap-list-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="pm-tree" role="tabpanel">
+      <p class="small text-body-secondary mb-2">Click a folder to expand it. Badges mark dangerous,
+         world-writable, and ACL'd paths.</p>
+      <div class="border rounded p-2 permmap-tree" id="permmap-tree-root" data-loaded="0">
+        <p class="text-body-secondary small m-2">Loading...</p>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="pm-changes" role="tabpanel" data-loaded="0">
+      <p class="text-body-secondary small m-2">Loading...</p>
+    </div>
+  </div>
+  {{else if $d.Enabled}}
+  <div class="alert alert-info">No scan yet. Press <strong>Scan now</strong> above to build the first map.</div>
+  {{end}}
+
+</div>
+{{end}}
+{{end}}

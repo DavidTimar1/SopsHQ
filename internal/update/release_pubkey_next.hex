@@ -1,0 +1,5 @@
+# The NEXT release signing public key (optional), same format as release_pubkey.hex.
+# Leave it empty except during a key rotation: put the new key here, ship a release,
+# sign with the new key, then move it into release_pubkey.hex and empty this file.
+# An empty release_pubkey.hex still refuses every update, whatever is here.
+# Lines starting with # and blank lines are ignored.

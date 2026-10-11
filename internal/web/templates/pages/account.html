@@ -1,0 +1,52 @@
+{{define "content"}}
+<h1 class="h3 mb-2">Account security</h1>
+<p class="text-body-secondary">Your panel sign-in details and two-factor settings.</p>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About your account &amp; recovery codes (security)</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <h6 class="mt-2 mb-1">What this page is</h6>
+    <p>Your own sign-in details and the controls to re-set up two-factor
+       authentication (2FA) - the authenticator app that produces your six-digit login
+       code.</p>
+    <h6 class="mt-2 mb-1">Recovery codes</h6>
+    <p>When you enroll, SopsHQ shows ten one-time <strong>recovery codes</strong>. Each
+       lets you sign in once if you cannot use your authenticator. They are shown only
+       at enrollment, so store them somewhere safe. If you are running low, re-enroll
+       to get a fresh set.</p>
+    <div class="mt-2">
+      <h6 class="mt-2 mb-1">Security note</h6>
+      <p>Re-enrolling immediately invalidates your old authenticator and any unused
+         recovery codes. Only PBKDF2 hashes of the codes are stored - the codes
+         themselves are never saved, shown again, or logged. A lost authenticator
+         never locks you out permanently: a recovery code, an admin reset, or the CLI
+         escape hatch always restores access.</p>
+    </div>
+  </div>
+</details>
+
+<table class="table table-sm" style="max-width:32rem">
+  <tbody>
+    <tr><th>Username</th><td>{{.Data.Username}}</td></tr>
+    <tr><th>Role</th><td>{{.Data.Role}}</td></tr>
+    <tr><th>Authenticator (2FA)</th>
+        <td>{{if .Data.TOTPEnabled}}enrolled{{else}}<span class="text-body-secondary">not enrolled</span>{{end}}</td></tr>
+    <tr><th>Recovery codes left</th>
+        <td>{{.Data.RecoveryLeft}}{{if le .Data.RecoveryLeft 2}} <span class="text-danger small">(low - re-enroll to get a fresh set)</span>{{end}}</td></tr>
+  </tbody>
+</table>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h2 class="h5">Re-enroll your authenticator</h2>
+    <p class="text-body-secondary">Lost your phone, switched authenticator apps, or running low on
+       recovery codes? Re-enrolling issues a brand-new authenticator secret and a
+       fresh set of recovery codes, and invalidates the old ones. You will scan a
+       new QR and confirm a code to finish.</p>
+    <form method="post" action="/account/reenroll" class="confirm"
+          data-confirm="Re-enroll? Your current authenticator and recovery codes stop working immediately, and you must finish setting up the new one.">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="btn btn-primary">Re-enroll authenticator</button>
+    </form>
+  </div>
+</div>
+{{end}}

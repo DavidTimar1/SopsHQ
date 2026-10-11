@@ -1,0 +1,171 @@
+{{define "content"}}
+{{template "importAlert" .}}
+{{if .Data.MissingFolders}}
+<div class="alert alert-warning">
+  <div><strong>{{len .Data.MissingFolders}} project folder(s) no longer exist on this machine.</strong>
+    A folder was moved or deleted. Open the project and update its path for this machine.</div>
+  <ul class="mb-0 mt-2 small">
+    {{range .Data.MissingFolders}}
+    <li><a href="/projects/{{.ProjectID}}">{{.ProjectName}}</a> - <span class="mono">{{.Path}}</span></li>
+    {{end}}
+  </ul>
+</div>
+{{end}}
+{{if .Data.Conflicts}}
+<div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
+  <span><strong>{{.Data.Conflicts}} conflict(s) to resolve.</strong>
+    SopsHQ found duplicate records that disagree on a value and did not merge them, so nothing was lost.</span>
+  <a class="btn btn-sm btn-warning" href="/conflicts">Resolve conflicts</a>
+</div>
+{{end}}
+<h1 class="h3 mb-2">Dashboard</h1>
+<details class="mb-3">
+  <summary class="text-primary small" style="cursor:pointer">About the dashboard &amp; what "Apply" does</summary>
+  <div class="small text-body-secondary mt-2 ps-2 border-start">
+    <h6 class="mt-2 mb-1">What this page is</h6>
+    <p>The dashboard is the control room. The cards count what SopsHQ knows about
+       (keys, projects, machines, OS users, panel logins). The buttons below turn
+       that intended setup into real files on disk.</p>
+    <h6 class="mt-2 mb-1">The buttons</h6>
+    <ul>
+      <li><strong>Dry run (local)</strong> - shows what an Apply WOULD change on this
+          machine, without touching anything. Always safe; use it first.</li>
+      <li><strong>Apply to this machine</strong> - places each assigned private key
+          into its OS user's key store and writes every local project's
+          <code>.sops.yaml</code>, then re-encrypts existing secret files to the
+          current public keys. After this, <code>sops -d</code> works locally even if
+          SopsHQ is switched off.</li>
+      <li><strong>Push to all machines</strong> - does the same for every registered
+          machine, sending key material to remote machines' agents over the encrypted
+          Tailscale channel. A machine that is not enrolled is skipped and reported.</li>
+      <li><strong>Sync now</strong> - pulls the other machines' database changes so
+          both sides agree on the intended setup. This moves records, never secret
+          values.</li>
+    </ul>
+    <h6 class="mt-2 mb-1">Before you can Apply</h6>
+    <p>Mark which machine this panel runs on first
+       (<a href="/machines">Machines -&gt; this machine</a>). Apply needs a key to be
+       generated for an assignment and a folder path for the project on that machine.</p>
+    <div class="mt-2">
+      <h6 class="mt-2 mb-1">Security note</h6>
+      <p>Applying writes PRIVATE keys to disk for the assigned OS users (owner-only
+         permissions). Anyone who can read a placed key can decrypt every secret
+         encrypted to it - so place a key only for users who are meant to decrypt.
+         SopsHQ never auto-unlocks at boot; the vault key is entered by the
+         operator and kept in memory only.</p>
+    </div>
+  </div>
+</details>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md">
+    <a class="card text-decoration-none h-100" href="/keys">
+      <div class="card-body text-center">
+        <div class="fs-2 fw-semibold">{{.Data.Keys}}</div>
+        <div class="text-body-secondary">Keys</div>
+        <div class="text-body-secondary small">{{.Data.Generated}} generated</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md">
+    <a class="card text-decoration-none h-100" href="/projects">
+      <div class="card-body text-center">
+        <div class="fs-2 fw-semibold">{{.Data.Projects}}</div>
+        <div class="text-body-secondary">Projects</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md">
+    <a class="card text-decoration-none h-100" href="/machines">
+      <div class="card-body text-center">
+        <div class="fs-2 fw-semibold">{{.Data.Machines}}</div>
+        <div class="text-body-secondary">Machines</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md">
+    <a class="card text-decoration-none h-100" href="/osusers">
+      <div class="card-body text-center">
+        <div class="fs-2 fw-semibold">{{.Data.OSUsers}}</div>
+        <div class="text-body-secondary">OS users</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-md">
+    <a class="card text-decoration-none h-100" href="/users">
+      <div class="card-body text-center">
+        <div class="fs-2 fw-semibold">{{.Data.Users}}</div>
+        <div class="text-body-secondary">Panel users</div>
+      </div>
+    </a>
+  </div>
+</div>
+<div class="d-flex flex-wrap gap-2 my-3 align-items-center">
+  <form method="post" action="/apply" class="d-inline">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="dry" value="1">
+    <button type="submit" class="btn btn-outline-secondary" title="Preview what an Apply would change on this machine, without touching anything">Dry run (local)</button>
+  </form>
+  <form method="post" action="/apply" class="d-inline confirm" data-confirm="Apply desired state to THIS machine (place keys, write .sops.yaml, re-key secrets)?">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="btn {{if .Data.HasPending}}btn-danger{{else}}btn-primary{{end}}"
+            title="{{if .Data.HasPending}}Place each assigned key, write every local .sops.yaml, then re-key secrets{{else}}Nothing to apply right now{{end}}"
+            {{if not .Data.HasPending}}disabled{{end}}>Apply to this machine</button>
+  </form>
+  <form method="post" action="/apply" class="d-inline confirm" data-confirm="Force re-apply: rewrite EVERY key store and .sops.yaml on this machine from the database, even if nothing looks out of date. Continue?">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="force" value="1">
+    <button type="submit" class="btn btn-outline-secondary" title="Rewrite every key store and .sops.yaml from the database, even if nothing looks out of date">Force re-apply</button>
+  </form>
+  <form method="post" action="/apply-all" class="d-inline confirm" data-confirm="Push desired state to ALL machines, including remote agents over Tailscale?">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="btn {{if .Data.HasPending}}btn-danger{{else}}btn-primary{{end}}"
+            title="{{if .Data.HasPending}}Do the same as Apply for every registered machine, over the encrypted Tailscale channel{{else}}Nothing to apply right now{{end}}"
+            {{if not .Data.HasPending}}disabled{{end}}>Push to all machines</button>
+  </form>
+  <form method="post" action="/sync" class="d-inline">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="btn btn-outline-secondary" title="Pull the other machines' database changes so both sides agree (moves records, never secret values)">Sync now</button>
+  </form>
+  {{if .Data.HasPending}}<span class="text-danger small">Changes are waiting to be applied (buttons are red until they are).</span>{{end}}
+</div>
+<p class="text-body-secondary">SopsHQ is a management plane. Once keys are placed, <code>sops -d</code>
+   works locally even if SopsHQ is offline. <strong>Apply</strong> places the assigned
+   keys for this machine's users and writes each local project's <code>.sops.yaml</code>.
+   Use <strong>Dry run</strong> first to preview. Machine paths and backups live on the
+   <a href="/settings">Settings</a> page.</p>
+
+{{if .Data.HasLastAction}}
+<h2 class="h4 mt-4 mb-2">Last action this session</h2>
+<p class="text-body-secondary">
+  <strong>{{.Data.LastAction.Scope}}{{if .Data.LastAction.Dry}} (dry run){{end}}</strong>
+  - {{fmtTime .Data.LastAction.When}} -
+  {{if .Data.LastAction.Report.Skipped}}<span class="text-danger">finished with skips</span>{{else}}<span class="text-success">ok</span>{{end}}
+</p>
+<p class="mono">{{.Data.LastAction.Summary}}</p>
+{{if .Data.LastAction.Report.Actions}}
+<table class="table table-sm align-middle">
+  <thead><tr><th>Where</th><th>What</th><th>Target</th><th>Detail</th><th>Status</th></tr></thead>
+  <tbody>
+    {{$dry := .Data.LastAction.Dry}}
+    {{range .Data.LastAction.Report.Actions}}
+    <tr{{if not .OK}} class="table-danger"{{end}}><td>{{.Scope}}</td><td class="mono">{{.Kind}}</td><td>{{.Target}}</td><td>{{.Detail}}</td><td>{{if not .OK}}<span class="text-danger">skipped</span>{{else if $dry}}<span class="text-body-secondary">would</span>{{else}}<span class="text-success">done</span>{{end}}</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+{{end}}
+
+{{if .Data.HasPending}}
+<h2 class="h4 mt-4 mb-2">Pending changes</h2>
+<p class="text-body-secondary">What an Apply would still change. The Apply buttons above stay red
+   until these are cleared.</p>
+<table class="table table-sm align-middle">
+  <thead><tr><th>Where</th><th>Kind</th><th>Target</th><th>Detail</th></tr></thead>
+  <tbody>
+    {{range .Data.Pending.Local}}<tr class="table-danger"><td>this machine</td><td class="mono">{{.Kind}}</td><td>{{.Target}}</td><td>{{.Detail}}</td></tr>{{end}}
+    {{range .Data.Pending.Remote}}<tr class="table-danger"><td>remote</td><td class="mono">{{.Kind}}</td><td>{{.Target}}</td><td>{{.Detail}}</td></tr>{{end}}
+    {{range .Data.Pending.Unreachable}}<tr class="table-warning"><td>remote</td><td class="mono">unreachable</td><td>{{.}}</td><td>could not verify (offline or not enrolled)</td></tr>{{end}}
+  </tbody>
+</table>
+{{end}}
+{{end}}
