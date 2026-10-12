@@ -198,6 +198,7 @@ seals them too, so reading the disk alone reveals nothing.
   ciphertext and tag.
   - Reads decrypt in memory after unlock; every atomic write (temporary file and rename)
     seals again.
+  - The store holds its records in memory behind a read-write mutex (`internal/store/store.go`), because writes are rare and human-driven.
   - The audit log and oplog are append-only, so an append reads and decrypts the file,
     adds the line, and rewrites the sealed file. That is cheap at SopsHQ's human-driven
     volume.

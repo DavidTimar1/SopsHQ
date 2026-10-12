@@ -181,6 +181,8 @@ After a successful run, `setup` prints every path it created or modified and poi
 `uninstall.sh` for removal (run `sudo ./uninstall.sh --dry-run` first). Every write uses
 a temporary file and a rename, so no `.tmp` file is left behind.
 
+`scripts/test_uninstall.sh` tests `uninstall.sh`.
+
 ## Packages
 
 | Package | Responsibility |

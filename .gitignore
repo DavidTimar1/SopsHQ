@@ -13,6 +13,11 @@ keys.txt
 !.github/
 !.archive/
 !.backups
+# .claude/ holds the shared settings.json (tracked) and per-machine files (not): re-include the
+# folder, ignore its contents, then re-include only the shared file.
+!.claude/
+.claude/*
+!.claude/settings.json
 __pycache__
 **/__pycache__
 **/**/__pycache__
